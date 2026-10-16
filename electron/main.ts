@@ -102,7 +102,9 @@ function createOverlay() {
 
 function openSettings() {
   if (settingsWin && !settingsWin.isDestroyed()) {
+    if (settingsWin.isMinimized()) settingsWin.restore()
     settingsWin.show()
+    settingsWin.moveTop()
     settingsWin.focus()
     return
   }

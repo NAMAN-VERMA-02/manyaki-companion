@@ -123,6 +123,8 @@ async function init() {
   }
 
   bridge.on('settings', fill)
+  // Never show a stale key status: re-check whenever the window is focused.
+  window.addEventListener('focus', () => void refreshKey())
   bridge.on('memory', renderMemory)
 }
 
