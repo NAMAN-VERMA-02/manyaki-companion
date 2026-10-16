@@ -133,6 +133,7 @@ describe('persona', () => {
     expect(p).toContain('12 min left')
     expect(p).toContain('the browser (work)')
     expect(p).not.toContain('secret doc title')
+    expect(p).toContain('Hinglish')
     expect(systemInstruction({ memory, activity, shareTitles: true, focus: null })).toContain('secret doc title')
   })
 })
