@@ -1,0 +1,178 @@
+:root {
+  --pink: #ff7aa8;
+  --pink-soft: #ffe3ee;
+  --ink: #3b2340;
+  --card: rgba(255, 255, 255, 0.96);
+  font-family: 'Segoe UI Variable Text', 'Segoe UI', system-ui, sans-serif;
+}
+
+html,
+body {
+  margin: 0;
+  width: 100%;
+  height: 100%;
+  overflow: hidden;
+  background: transparent;
+  user-select: none;
+}
+
+#stage {
+  position: fixed;
+  inset: 0;
+  width: 100vw;
+  height: 100vh;
+  transition: opacity 0.6s ease;
+}
+#stage.faded {
+  opacity: 0;
+}
+
+.hidden {
+  display: none !important;
+}
+
+/* Speech bubble that floats above her head */
+.bubble {
+  position: fixed;
+  left: 0;
+  top: 0;
+  max-width: 300px;
+  min-width: 40px;
+  padding: 10px 14px;
+  border-radius: 18px;
+  background: var(--card);
+  color: var(--ink);
+  font-size: 14.5px;
+  line-height: 1.4;
+  box-shadow: 0 6px 24px rgba(120, 40, 90, 0.22), 0 0 0 2px var(--pink-soft);
+  transform: translate(-50%, -100%);
+  pointer-events: auto;
+  animation: pop 0.22s cubic-bezier(0.2, 1.4, 0.4, 1);
+  white-space: pre-wrap;
+  word-wrap: break-word;
+}
+.bubble::after {
+  content: '';
+  position: absolute;
+  left: 50%;
+  bottom: -8px;
+  width: 16px;
+  height: 16px;
+  background: var(--card);
+  transform: translateX(-50%) rotate(45deg);
+  box-shadow: 3px 3px 0 0 var(--pink-soft);
+}
+.bubble.thinking .bubble-text::after {
+  content: '';
+  display: inline-block;
+  width: 1.4em;
+  text-align: left;
+  animation: dots 1.2s steps(4) infinite;
+}
+.bubble.you {
+  background: #f3f0ff;
+  font-style: italic;
+  opacity: 0.92;
+}
+
+@keyframes dots {
+  0% { content: ''; }
+  25% { content: '.'; }
+  50% { content: '..'; }
+  75% { content: '...'; }
+}
+@keyframes pop {
+  from { transform: translate(-50%, -100%) scale(0.7); opacity: 0; }
+  to { transform: translate(-50%, -100%) scale(1); opacity: 1; }
+}
+
+/* Chat input */
+.chat {
+  position: fixed;
+  display: flex;
+  gap: 6px;
+  padding: 6px;
+  border-radius: 999px;
+  background: var(--card);
+  box-shadow: 0 6px 24px rgba(120, 40, 90, 0.25), 0 0 0 2px var(--pink);
+  transform: translate(-50%, 0);
+  animation: pop2 0.2s ease-out;
+}
+.chat input {
+  width: 260px;
+  border: 0;
+  outline: 0;
+  padding: 6px 10px;
+  font: inherit;
+  font-size: 14px;
+  background: transparent;
+  color: var(--ink);
+}
+.chat button {
+  border: 0;
+  border-radius: 999px;
+  background: var(--pink);
+  color: white;
+  width: 34px;
+  height: 34px;
+  cursor: pointer;
+  font-size: 16px;
+}
+@keyframes pop2 {
+  from { transform: translate(-50%, 6px); opacity: 0; }
+  to { transform: translate(-50%, 0); opacity: 1; }
+}
+
+/* Small status chip under her (listening, loading, focus timer) */
+.status {
+  position: fixed;
+  transform: translate(-50%, 0);
+  padding: 3px 10px;
+  border-radius: 999px;
+  background: rgba(59, 35, 64, 0.82);
+  color: white;
+  font-size: 12px;
+  white-space: nowrap;
+  pointer-events: none;
+}
+.status.listening {
+  background: var(--pink);
+  animation: pulse 1.2s ease-in-out infinite;
+}
+@keyframes pulse {
+  50% { box-shadow: 0 0 0 6px rgba(255, 122, 168, 0.25); }
+}
+
+/* Debug panel (--manyaki-debug) */
+.debug {
+  position: fixed;
+  left: 12px;
+  top: 12px;
+  width: 300px;
+  max-height: 80vh;
+  overflow: auto;
+  padding: 10px;
+  border-radius: 12px;
+  background: rgba(20, 12, 24, 0.88);
+  color: #fdf;
+  font: 12px/1.4 ui-monospace, Consolas, monospace;
+  pointer-events: auto;
+}
+.debug h4 {
+  margin: 8px 0 4px;
+  color: var(--pink);
+}
+.debug button {
+  margin: 2px;
+  padding: 2px 6px;
+  border: 1px solid #a57;
+  border-radius: 6px;
+  background: #301a33;
+  color: #fdf;
+  cursor: pointer;
+  font: inherit;
+}
+.debug pre {
+  white-space: pre-wrap;
+  margin: 4px 0;
+}

@@ -1,0 +1,96 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta http-equiv="Content-Security-Policy" content="default-src 'self' manyaki-asset:; style-src 'self' 'unsafe-inline'; img-src 'self' data: manyaki-asset:; script-src 'self'" />
+    <title>Manyaki · Settings</title>
+    <link rel="stylesheet" href="./ui/settings.css" />
+  </head>
+  <body>
+    <header>
+      <img src="manyaki-asset://icon.png" alt="" />
+      <div>
+        <h1>Manyaki</h1>
+        <p class="sub">your desktop study buddy 💗</p>
+      </div>
+    </header>
+
+    <section id="key-section">
+      <h2>1 · Give her a voice</h2>
+      <p>Manyaki talks using Google's Gemini. A key is <b>free</b> and takes a minute:</p>
+      <ol>
+        <li>Open <a href="https://aistudio.google.com/apikey" target="_blank" rel="noreferrer">aistudio.google.com/apikey</a> and sign in.</li>
+        <li>Click <b>Create API key</b>, copy it, paste it here.</li>
+      </ol>
+      <div class="row">
+        <input id="key" type="password" placeholder="Paste your Gemini API key" autocomplete="off" spellcheck="false" />
+        <button id="save-key" class="primary">Save</button>
+      </div>
+      <p id="key-status" class="hint"></p>
+      <p class="hint">The key is encrypted with Windows and stays on this PC.</p>
+    </section>
+
+    <section>
+      <h2>2 · How she listens</h2>
+      <label class="radio"><input type="radio" name="mic" value="handsfree" /> <span><b>Hands-free</b> — she hears you whenever you speak</span></label>
+      <label class="radio"><input type="radio" name="mic" value="toggle" /> <span><b>Hotkey</b> — press <kbd>Ctrl</kbd>+<kbd>Alt</kbd>+<kbd>Space</kbd>, then talk</span></label>
+      <label class="radio"><input type="radio" name="mic" value="off" /> <span><b>Off</b> — double-click her to type</span></label>
+      <p class="hint">Audio only leaves your PC after her on-device detector hears speech.</p>
+    </section>
+
+    <section>
+      <h2>Her voice & size</h2>
+      <div class="grid">
+        <label>Voice
+          <select id="voice">
+            <option>Leda</option><option>Aoede</option><option>Kore</option><option>Zephyr</option>
+            <option>Callirrhoe</option><option>Autonoe</option><option>Laomedeia</option><option>Achernar</option>
+            <option>Sulafat</option><option>Despina</option><option>Erinome</option><option>Vindemiatrix</option>
+          </select>
+        </label>
+        <label>Size
+          <select id="size">
+            <option value="180">Tiny</option><option value="220">Small</option><option value="260">Medium</option>
+            <option value="320">Large</option><option value="400">Huge</option>
+          </select>
+        </label>
+        <label>Focus length (min)<input id="focus" type="number" min="5" max="120" /></label>
+        <label>Break length (min)<input id="break" type="number" min="1" max="60" /></label>
+        <label>Check in every (min)<input id="checkin" type="number" min="5" max="120" /></label>
+      </div>
+      <label class="check"><input id="launch" type="checkbox" /> Start Manyaki when Windows starts</label>
+      <label class="check"><input id="dnd" type="checkbox" /> Do not disturb (she stays quiet)</label>
+    </section>
+
+    <section>
+      <h2>Privacy</h2>
+      <label class="check"><input id="titles" type="checkbox" /> Let her read full window titles (otherwise only the app name, like "VS Code" or "YouTube")</label>
+      <details>
+        <summary>Which apps count as work / distraction</summary>
+        <label>Work keywords<textarea id="work" rows="3"></textarea></label>
+        <label>Distraction keywords<textarea id="distraction" rows="3"></textarea></label>
+        <p class="hint">Comma-separated, matched against the app name and window title.</p>
+      </details>
+      <p class="hint">Conversations go to Google's Gemini API (free tier: Google may use them to improve its products). Memory stays on this PC.</p>
+    </section>
+
+    <section>
+      <h2>What she remembers</h2>
+      <p id="mem-summary" class="hint"></p>
+      <ul id="facts"></ul>
+      <ul id="goals"></ul>
+      <div class="row">
+        <button id="export">Export…</button>
+        <button id="wipe" class="danger">Forget everything</button>
+      </div>
+    </section>
+
+    <section>
+      <h2>Animations</h2>
+      <p class="hint">Want smoother motion? Drop Mixamo <code>.fbx</code> (or <code>.vrma</code>) clips into the anims folder and restart her. File names pick the slot: Idle, Happy Idle, Walking, Running, Jump, Falling, Landing, Hanging, Sitting, Sit To Stand, Waving, Nodding, Shaking Head, Thinking, Talking, Excited, Bashful, Stretching, Sleeping, Clapping, Dancing.</p>
+    </section>
+
+    <footer><span id="saved" class="hint"></span></footer>
+    <script type="module" src="./ui/settings.ts"></script>
+  </body>
+</html>
