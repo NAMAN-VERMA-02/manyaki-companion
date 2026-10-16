@@ -3,7 +3,7 @@ import type { VRM } from '@pixiv/three-vrm'
 import { buildClip, PROCEDURAL } from './procedural'
 import { loadMixamoClip, loadVrmaClip, slotForFile } from './clips'
 
-const LOOPING = new Set(['idle', 'idleHappy', 'walk', 'run', 'fall', 'dangle', 'sit', 'sitFloor', 'sleep', 'sleepFloor', 'think', 'talk', 'listen', 'shy', 'dance', 'pout'])
+const LOOPING = new Set(['idle', 'idleHappy', 'walk', 'run', 'fall', 'dangle', 'sit', 'sitFloor', 'sleep', 'sleepFloor', 'think', 'talk', 'listen', 'shy', 'dance', 'pout', 'typing'])
 
 export interface PlayOptions { fade?: number; speed?: number }
 

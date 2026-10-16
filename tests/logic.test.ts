@@ -111,14 +111,17 @@ describe('tools', () => {
     addGoal: (t) => `goal ${t}`,
     completeGoal: (w) => `done ${w}`,
     remember: (f) => `rem ${f}`,
-    setUserName: (n) => `name ${n}`
+    setUserName: (n) => `name ${n}`,
+    openThing: async (k, t) => `${k} ${t}`
   }
-  it('validates arguments and never throws', () => {
-    expect(runTool(host, 'react', { emotion: 'nope', action: 'dance', emote: 'heart' })).toEqual({ ok: true })
+  it('validates arguments and never throws', async () => {
+    expect(await runTool(host, 'react', { emotion: 'nope', action: 'dance', emote: 'heart' })).toEqual({ ok: true })
     expect(calls.pop()).toBe('react happy dance heart')
-    expect(runTool(host, 'start_focus', { minutes: 500 })).toEqual({ result: 'focus 120' })
-    expect(runTool(host, 'start_focus', {})).toEqual({ result: 'focus 25' })
-    expect(runTool(host, 'mystery')).toHaveProperty('error')
+    expect(await runTool(host, 'start_focus', { minutes: 500 })).toEqual({ result: 'focus 120' })
+    expect(await runTool(host, 'start_focus', {})).toEqual({ result: 'focus 25' })
+    expect(await runTool(host, 'open_folder', { name: 'Downloads' })).toEqual({ result: 'folder Downloads' })
+    expect(await runTool(host, 'open_website', { target: 'youtube' })).toEqual({ result: 'website youtube' })
+    expect(await runTool(host, 'mystery')).toHaveProperty('error')
   })
 })
 
@@ -149,5 +152,23 @@ describe('misc', () => {
     expect(slotForFile('x/Walking.fbx')).toBe('walk')
     expect(slotForFile('x/Shaking Head No.fbx')).toBe('shake')
     expect(slotForFile('x/Random.fbx')).toBeNull()
+  })
+})
+
+describe('open actions', async () => {
+  const { resolveWebsite, matchScore } = await import('../electron/resolve')
+  it('turns names, domains and queries into safe https URLs', () => {
+    expect(resolveWebsite('YouTube')).toBe('https://www.youtube.com')
+    expect(resolveWebsite('github.com/naman')).toBe('https://github.com/naman')
+    expect(resolveWebsite('http://example.com')).toBe('https://example.com')
+    expect(resolveWebsite('lofi beats on youtube')).toBe('https://www.youtube.com/results?search_query=lofi%20beats')
+    expect(resolveWebsite('dsa notes pdf')).toBe('https://www.google.com/search?q=dsa%20notes%20pdf')
+    expect(resolveWebsite('javascript:alert(1)')).toMatch(/^https:\/\/www\.google\.com\/search/)
+  })
+  it('ranks folder/app names sensibly', () => {
+    expect(matchScore('maya', 'maya')).toBe(100)
+    expect(matchScore('visual studio code', 'Visual Studio Code')).toBe(100)
+    expect(matchScore('college notes', 'College Notes 2026')).toBeGreaterThan(matchScore('college notes', 'Notes'))
+    expect(matchScore('spotify', 'Steam')).toBe(0)
   })
 })

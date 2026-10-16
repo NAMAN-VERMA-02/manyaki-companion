@@ -20,7 +20,9 @@ const bridge: Bridge = {
   exportMemory: () => ipcRenderer.invoke('memory:export'),
   notify: (title, body) => ipcRenderer.send('notify', title, body),
   openSettings: () => ipcRenderer.send('settings:open'),
+  showMenu: () => ipcRenderer.send('menu:popup'),
   listAnims: () => ipcRenderer.invoke('anims:list'),
+  runAction: (kind, target) => ipcRenderer.invoke('action:run', kind, target),
   log: (level, msg) => ipcRenderer.send('log', level, msg),
   on: ((channel: string, cb: (payload: unknown) => void) => {
     const handler = (_e: Electron.IpcRendererEvent, payload: unknown) => cb(payload)

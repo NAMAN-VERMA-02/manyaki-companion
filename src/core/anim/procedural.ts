@@ -191,6 +191,11 @@ export const PROCEDURAL: Record<string, ClipSpec> = {
       [2, base({ leftUpperArm: [-50, -55, 0], rightUpperArm: [50, 55, 0], leftLowerArm: [-110, 0, 0], rightLowerArm: [110, 0, 0], head: [-6, 25, 0] })]
     ]
   },
+  typing: {
+    duration: 0.5, loop: true, keys: [
+      [0, base(typePose(0))], [0.125, base(typePose(1))], [0.25, base(typePose(2))], [0.375, base(typePose(1))], [0.5, base(typePose(0))]
+    ]
+  },
   headpat: {
     duration: 2, loop: false, keys: [
       [0, base({})], [0.3, base({ head: [10, 0, 10], neck: [6, 0, 0], spine: [4, 0, 0] })],
@@ -238,6 +243,18 @@ function floorSitPose(t: number): Pose {
     leftFoot: [-10, 0, 0], rightFoot: [-10, 0, 0],
     spine: [-6, 0, 0], head: [4, t ? 6 : -4, t ? 7 : 3],
     leftUpperArm: [-25, -70, 0], rightUpperArm: [25, 70, 0], leftLowerArm: [-5, 0, 0], rightLowerArm: [5, 0, 0]
+  }
+}
+
+// Holding the little laptop at chest height and tapping away, eyes on the screen.
+function typePose(i: number): Pose {
+  const l = i === 1 ? 6 : 0
+  const r = i === 2 ? 6 : 0
+  return {
+    leftUpperArm: [-38, -62, 0], rightUpperArm: [38, 62, 0],
+    leftLowerArm: [-78, l, 0], rightLowerArm: [78, -r, 0],
+    leftHand: [0, -10 - l, 0], rightHand: [0, 10 + r, 0],
+    head: [20, 0, i === 2 ? 3 : -2], neck: [6, 0, 0], spine: [5, 0, 0]
   }
 }
 

@@ -14,6 +14,8 @@ export interface ToolHost {
   completeGoal(which: string): string
   remember(fact: string): string
   setUserName(name: string): string
+  /** Opens something on the computer, with her little laptop animation. Resolves with what happened. */
+  openThing(kind: 'folder' | 'app' | 'website', target: string): Promise<string>
 }
 
 export const NON_BLOCKING = new Set(['react'])
@@ -57,6 +59,21 @@ export function toolDeclarations(live: boolean): FunctionDeclaration[] {
       parameters: { type: Type.OBJECT, properties: { fact: { type: Type.STRING } }, required: ['fact'] }
     },
     {
+      name: 'open_folder',
+      description: 'Open a folder on their computer in File Explorer when they ask (e.g. Downloads, Desktop, Documents, or a folder by name like "maya" or "college notes").',
+      parameters: { type: Type.OBJECT, properties: { name: { type: Type.STRING, description: 'folder name or full path' } }, required: ['name'] }
+    },
+    {
+      name: 'open_app',
+      description: 'Launch an installed app when they ask (e.g. VS Code, Chrome, Spotify, Notepad, Calculator, Settings, WhatsApp).',
+      parameters: { type: Type.OBJECT, properties: { name: { type: Type.STRING } }, required: ['name'] }
+    },
+    {
+      name: 'open_website',
+      description: 'Open a website or search in their browser (e.g. "youtube", "github.com", "lofi beats on youtube", or any search query).',
+      parameters: { type: Type.OBJECT, properties: { target: { type: Type.STRING } }, required: ['target'] }
+    },
+    {
       name: 'set_user_name',
       description: 'Save what they want to be called.',
       parameters: { type: Type.OBJECT, properties: { name: { type: Type.STRING } }, required: ['name'] }
@@ -65,7 +82,7 @@ export function toolDeclarations(live: boolean): FunctionDeclaration[] {
 }
 
 /** Executes one tool call; never throws (a bad call becomes an error message the model can see). */
-export function runTool(host: ToolHost, name: string, args: Record<string, unknown> = {}): Record<string, unknown> {
+export async function runTool(host: ToolHost, name: string, args: Record<string, unknown> = {}): Promise<Record<string, unknown>> {
   try {
     switch (name) {
       case 'react': {
@@ -84,6 +101,9 @@ export function runTool(host: ToolHost, name: string, args: Record<string, unkno
       case 'complete_goal': return { result: host.completeGoal(String(args.which ?? '')) }
       case 'remember': return { result: host.remember(String(args.fact ?? '')) }
       case 'set_user_name': return { result: host.setUserName(String(args.name ?? '')) }
+      case 'open_folder': return { result: await host.openThing('folder', String(args.name ?? '')) }
+      case 'open_app': return { result: await host.openThing('app', String(args.name ?? '')) }
+      case 'open_website': return { result: await host.openThing('website', String(args.target ?? '')) }
       default: return { error: `unknown tool ${name}` }
     }
   } catch (err) {

@@ -46,6 +46,7 @@ export class Companion implements ToolHost {
   private saveTimer = 0
   private micError = ''
   private keyRejected = false
+  private hiddenUntil = 0
 
   constructor(private readonly bridge: Bridge, private readonly stage: Stage) {
     const log = (m: string) => bridge.log('warn', m)
@@ -69,9 +70,13 @@ export class Companion implements ToolHost {
       onFrame: (f) => this.onMicFrame(f),
       onSpeechEnd: (audio) => this.onSpeechEnd(audio),
       onError: (msg) => {
+        const first = this.micError !== msg
         this.micError = msg
         bridge.log('warn', `mic: ${msg}`)
-        stage.chip.set("I can't hear you (mic blocked?) — double-click me to type 💌", '', 8000)
+        if (!first) return
+        if (/denied by system|NotAllowed/i.test(msg)) {
+          stage.bubble.show("Windows is blocking my ears 🥺 Turn on Microphone access (right-click me → Fix microphone). I'll keep listening for it!", { holdMs: 12000 })
+        } else stage.chip.set("I can't hear you (mic busy or missing) — double-click me to type 💌", '', 8000)
       }
     })
     this.audio.onEnded(() => this.onAudioDrained())
@@ -102,11 +107,14 @@ export class Companion implements ToolHost {
 
     setInterval(() => this.timer.tick(), 1000)
     setInterval(() => this.considerNudge(), 20000)
+    // If the mic was blocked (Windows privacy switch, device unplugged), keep retrying quietly.
+    setInterval(() => { if (this.micError && !this.mic.enabled) void this.syncMic().then(() => { if (this.mic.enabled) { this.micError = ''; this.stage.chip.set('I can hear you now! 👂', '', 3000) } }) }, 15000)
     window.addEventListener('online', () => this.stage.chip.set('back online ✨', '', 2500))
 
     this.local.onProgress = (p) => { if (p < 1) this.stage.chip.set(`downloading my offline voice… ${Math.round(p * 100)}%`, '', 3000) }
     // Greet once she has landed.
     setTimeout(() => this.greet(), 2600)
+    setTimeout(() => { if (!this.stage.bubble.visible) this.stage.chip.set('right-click me for my menu 💗', '', 7000) }, 9000)
   }
 
   // ---------------- setup ----------------
@@ -219,7 +227,7 @@ export class Companion implements ToolHost {
     if (!this.firstAudioMs && this.speechEndAt) this.firstAudioMs = Math.round(performance.now() - this.speechEndAt)
     clearTimeout(this.thinkingTimer)
     const rate = Number(/rate=(\d+)/.exec(mime)?.[1] ?? 24000)
-    this.audio.enqueuePcm16(b64, rate)
+    if (!this.settings.voiceMuted) this.audio.enqueuePcm16(b64, rate)
     this.stage.body.setConv('talking')
     this.mic.setHerSpeaking(true)
   }
@@ -312,7 +320,7 @@ export class Companion implements ToolHost {
     this.stage.body.setConv('talking')
     this.stage.bubble.show(text, { holdMs: Math.max(4000, text.length * 75) })
     this.mic.setHerSpeaking(true)
-    this.local.speak(text)
+    if (!this.settings.voiceMuted) this.local.speak(text)
     // When the system voice or Kokoro finishes, the drain handler resets conv; guard for silent failure.
     window.setTimeout(() => { if (!this.audio.speaking && !this.local.systemSpeaking) { this.stage.body.setConv('none'); this.mic.setHerSpeaking(false) } }, Math.max(6000, text.length * 120))
   }
@@ -392,6 +400,18 @@ export class Companion implements ToolHost {
     return 'saved'
   }
 
+  async openThing(kind: 'folder' | 'app' | 'website', target: string): Promise<string> {
+    const icon = kind === 'folder' ? '📂' : kind === 'app' ? '🚀' : '🌐'
+    let detail = ''
+    const ok = await this.stage.body.useLaptop(this.stage.laptop, target, icon, async () => {
+      const r = await this.bridge.runAction(kind, target)
+      detail = r.ok ? `opened ${r.opened ?? target}` : `failed: ${r.error ?? 'unknown error'}`
+      return r.ok
+    })
+    this.lastInteractionAt = Date.now()
+    return ok ? detail : `${detail}. Tell them kindly and maybe ask for the exact name.`
+  }
+
   setUserName(name: string) {
     this.memory.userName = name.trim().slice(0, 40)
     this.saveMemory()
@@ -450,7 +470,7 @@ export class Companion implements ToolHost {
     const prev = this.activity
     this.activity = a
     this.stage.body.setActivity(a)
-    this.stage.setHidden(a.fullscreen)
+    this.stage.setHidden(a.fullscreen || Date.now() < this.hiddenUntil)
 
     const now = Date.now()
     if (!prev || prev.category !== a.category) {
@@ -595,6 +615,11 @@ export class Companion implements ToolHost {
       case 'corner': this.stage.body.goCorner(); break
       case 'say-hi': this.react('happy', 'wave', 'heart'); break
       case 'chat': this.openChat(); break
+      case 'hide':
+        this.stage.setHidden(true)
+        this.hiddenUntil = Date.now() + c.minutes * 60000
+        setTimeout(() => { this.hiddenUntil = 0; this.stage.setHidden(!!this.activity?.fullscreen); this.react('happy', 'wave', 'heart') }, c.minutes * 60000)
+        break
       case 'reload-key': void this.loadKey().then(() => { if (this.hasKey) this.greet() }); break
     }
   }

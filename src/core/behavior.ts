@@ -4,6 +4,7 @@ import type { Motion } from './anim/motion'
 import type { Layers } from './anim/layers'
 import type { Emotion, Expressions } from './expressions'
 import type { Emotes } from './fx'
+import type { Laptop } from './laptop'
 
 export type Action =
   | 'wave' | 'nod' | 'shake' | 'think' | 'cheer' | 'jump' | 'dance' | 'shy' | 'clap' | 'stretch' | 'pout' | 'headpat' | 'none'
@@ -157,7 +158,7 @@ export class Behavior {
 
   /** Play a gesture. Held actions (dance, think, shy, pout) last `holdMs`. */
   async act(a: Action, holdMs = 4000) {
-    if (a === 'none' || this.mode === 'drag' || this.mode === 'fall' || this.mode === 'jump') return
+    if (a === 'none' || this.usingLaptop || this.mode === 'drag' || this.mode === 'fall' || this.mode === 'jump') return
     if (this.sleeping) this.wake()
     if (a === 'jump') {
       this.vy = -700 * this.s
@@ -223,6 +224,38 @@ export class Behavior {
     if (this.onPerch()) this.toSit()
     else this.toStand()
   }
+
+  /**
+   * The "do something on the computer" routine: she stops, pulls out her little laptop, types while
+   * `work` runs, shows the result on its screen and puts it away.
+   */
+  async useLaptop(laptop: Laptop, label: string, icon: string, work: () => Promise<boolean>): Promise<boolean> {
+    if (this.sleeping) this.wake()
+    if (this.mode === 'walk' || this.mode === 'sit') this.toStand()
+    const canAnimate = !this.isBusy && !laptop.busy
+    if (!canAnimate) return work()
+    const token = ++this.actToken
+    this.mode = 'act'
+    this.usingLaptop = true
+    this.layers.lookWeight = 0.2
+    this.motion.play('typing', { fade: 0.25 })
+    laptop.begin(label, icon)
+    this.emotes.pop('sparkle')
+    // Let the pop-in and lid animation play before the real work, so it reads as cause and effect.
+    const [ok] = await Promise.all([work().catch(() => false), new Promise((r) => setTimeout(r, 1300))])
+    laptop.finish(ok)
+    this.face.set(ok ? 'happy' : 'worried', 2500)
+    await new Promise((r) => setTimeout(r, 1100))
+    this.usingLaptop = false
+    this.layers.lookWeight = 1
+    if (token === this.actToken && this.mode === 'act') {
+      if (ok) void this.act('nod')
+      else this.toStand()
+    }
+    return ok
+  }
+
+  private usingLaptop = false
 
   get isSleeping() { return this.sleeping }
   get isBusy() { return this.mode === 'drag' || this.mode === 'fall' || this.mode === 'jump' || this.mode === 'land' }

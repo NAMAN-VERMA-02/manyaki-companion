@@ -172,20 +172,7 @@ export class LiveBrain {
       // Server will drop us soon; reconnect lazily on next use with the resumption handle.
       this.log(`live goAway ${m.goAway.timeLeft}`)
     }
-    if (m.toolCall?.functionCalls?.length) {
-      const responses = m.toolCall.functionCalls.map((fc) => {
-        const response = runTool(this.tools, fc.name ?? '', (fc.args ?? {}) as Record<string, unknown>)
-        return {
-          id: fc.id,
-          name: fc.name,
-          response,
-          // WHEN_IDLE: if she already started talking this is just context; if the turn held only the
-          // gesture call (common), it prompts her to go on and actually speak. SILENT made her go mute.
-          ...(NON_BLOCKING.has(fc.name ?? '') ? { scheduling: FunctionResponseScheduling.WHEN_IDLE } : {})
-        }
-      })
-      this.session?.sendToolResponse({ functionResponses: responses })
-    }
+    if (m.toolCall?.functionCalls?.length) void this.answerTools(m.toolCall.functionCalls)
     const c = m.serverContent
     if (!c) return
     if (c.interrupted) {
@@ -204,6 +191,19 @@ export class LiveBrain {
       this.generating = false
       this.ev.onTurnComplete()
     }
+  }
+
+  private async answerTools(calls: { id?: string; name?: string; args?: Record<string, unknown> }[]) {
+    const session = this.session
+    const responses = await Promise.all(calls.map(async (fc) => ({
+      id: fc.id,
+      name: fc.name,
+      response: await runTool(this.tools, fc.name ?? '', fc.args ?? {}),
+      // WHEN_IDLE: if she already started talking this is just context; if the turn held only the
+      // gesture call (common), it prompts her to go on and actually speak. SILENT made her go mute.
+      ...(NON_BLOCKING.has(fc.name ?? '') ? { scheduling: FunctionResponseScheduling.WHEN_IDLE } : {})
+    })))
+    if (session === this.session) this.session?.sendToolResponse({ functionResponses: responses })
   }
 
   sendAudio(b64: string) {

@@ -5,6 +5,7 @@ import { Layers } from './core/anim/layers'
 import { Expressions } from './core/expressions'
 import { Blush, Emotes } from './core/fx'
 import { Behavior } from './core/behavior'
+import { Laptop } from './core/laptop'
 import { Bubble, StatusChip } from './ui/bubble'
 
 export type ClickZone = 'head' | 'body'
@@ -20,6 +21,7 @@ export class Stage {
   face!: Expressions
   blush!: Blush
   emotes!: Emotes
+  laptop!: Laptop
   body!: Behavior
   readonly bubble = new Bubble()
   readonly chip = new StatusChip()
@@ -57,6 +59,7 @@ export class Stage {
     this.face = new Expressions(this.avatar.vrm)
     this.blush = new Blush(this.avatar)
     this.emotes = new Emotes(this.avatar)
+    this.laptop = new Laptop(this.avatar)
     this.body = new Behavior(this.avatar, this.motion, this.layers, this.face, this.emotes)
     this.body.setDisplay(this.display)
 
@@ -65,6 +68,10 @@ export class Stage {
     window.addEventListener('mousemove', (e) => this.onMove(e))
     window.addEventListener('mousedown', (e) => this.onDown(e))
     window.addEventListener('mouseup', (e) => this.onUp(e))
+    window.addEventListener('contextmenu', (e) => {
+      e.preventDefault()
+      if (this.hover) this.bridge.showMenu()
+    })
     this.bridge.on('cursor', (p) => {
       if (p.x === this.cursorX && p.y === this.cursorY) return
       this.cursorX = p.x
@@ -137,6 +144,7 @@ export class Stage {
     const m = this.body.mode
     if (m === 'walk' || m === 'fall' || m === 'jump' || m === 'drag' || m === 'land') return 60
     if (this.body.conv === 'talking' || m === 'act') return 30
+    if (this.laptop.busy) return 30
     if (this.body.conv !== 'none' || this.hover || this.emotes.active || this.face.animating) return 24
     if (m === 'sleep') return 6
     if (m === 'sit') return 10
@@ -172,6 +180,7 @@ export class Stage {
     this.blush.set(this.face.blush)
     this.avatar.vrm.update(dt)
     this.emotes.update(dt)
+    this.laptop.update(dt)
     if (this.bridge.followWindow) this.followWindow()
     this.avatar.render()
 

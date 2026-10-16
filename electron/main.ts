@@ -5,6 +5,7 @@ import { pathToFileURL } from 'node:url'
 import type { Command, DisplayInfo, Settings } from '../shared/types'
 import { startActivityWatcher } from './activity'
 import * as store from './store'
+import { runAction, type ActionKind } from './actions'
 
 const DEBUG = process.argv.includes('--manyaki-debug') || !!process.env.MANYAKI_DEBUG
 const ASSET_SCHEME = 'manyaki-asset'
@@ -136,9 +137,10 @@ function send(channel: string, payload: unknown) {
 }
 const command = (cmd: Command) => overlay?.webContents.send('command', cmd)
 
-function buildTray() {
+/** Her control menu: shown from the tray icon and when you right-click her. */
+function controlMenu(): Menu {
   const s = store.getSettings()
-  const menu = Menu.buildFromTemplate([
+  return Menu.buildFromTemplate([
     { label: 'Manyaki 💗', enabled: false },
     { type: 'separator' },
     { label: 'Talk to her  (Ctrl+Alt+Space)', click: () => command({ type: 'toggle-listen' }) },
@@ -152,6 +154,9 @@ function buildTray() {
         click: () => applySettings({ micMode: m })
       }))
     },
+    { label: 'Fix microphone (Windows privacy)…', click: () => void shell.openExternal('ms-settings:privacy-microphone') },
+    { label: 'Mute her voice (text bubble only)', type: 'checkbox', checked: s.voiceMuted, click: (i) => applySettings({ voiceMuted: i.checked }) },
+    { label: 'Hide her for 30 minutes', click: () => command({ type: 'hide', minutes: 30 }) },
     { type: 'separator' },
     { label: `Start focus (${s.focusMinutes} min)`, click: () => command({ type: 'focus-start' }) },
     { label: 'Stop focus', click: () => command({ type: 'focus-stop' }) },
@@ -174,6 +179,10 @@ function buildTray() {
     { type: 'separator' },
     { label: 'Quit', click: () => app.quit() }
   ])
+}
+
+function buildTray() {
+  const menu = controlMenu()
   if (!tray) {
     tray = new Tray(appIcon(32))
     tray.setToolTip('Manyaki')
@@ -235,10 +244,16 @@ function registerIpc() {
     return res.filePath
   })
   ipcMain.handle('anims:list', () => listAnims())
+  ipcMain.handle('action:run', async (_e, kind: ActionKind, target: string) => {
+    const r = await runAction(kind, target)
+    log('info', `action ${kind} "${String(target).slice(0, 60)}" -> ${r.ok ? 'opened' : r.error}`)
+    return r
+  })
   ipcMain.on('notify', (_e, title: string, body: string) => {
     if (Notification.isSupported()) new Notification({ title, body, icon: appIcon(128), silent: false }).show()
   })
   ipcMain.on('settings:open', openSettings)
+  ipcMain.on('menu:popup', () => { if (overlay) controlMenu().popup({ window: overlay }) })
   ipcMain.on('log', (_e, level: string, msg: string) => log(level, msg))
 }
 

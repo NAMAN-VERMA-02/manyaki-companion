@@ -32,6 +32,7 @@ export interface Settings {
   dnd: boolean
   shareTitles: boolean           // send full window titles to the model (off by default)
   launchAtLogin: boolean
+  voiceMuted: boolean            // she replies in the bubble only, no audio
   neuralVoice: boolean           // opt-in local Kokoro voice for offline use (needs a decent GPU)
   checkInMinutes: number
   focusMinutes: number
@@ -64,6 +65,7 @@ export const DEFAULT_SETTINGS: Settings = {
   dnd: false,
   shareTitles: false,
   launchAtLogin: true,
+  voiceMuted: false,
   neuralVoice: false,
   checkInMinutes: 12,
   focusMinutes: 25,
@@ -111,7 +113,11 @@ export interface Bridge {
   exportMemory(): Promise<string | null>
   notify(title: string, body: string): void
   openSettings(): void
+  /** Right-click menu with her controls (mic, mute, DND, focus, size, settings, quit). */
+  showMenu(): void
   listAnims(): Promise<string[]>
+  /** Open a folder, app or website on the computer (open-only; nothing destructive). */
+  runAction(kind: 'folder' | 'app' | 'website', target: string): Promise<{ ok: boolean; opened?: string; error?: string }>
   log(level: 'info' | 'warn' | 'error', msg: string): void
   on(channel: 'activity', cb: (a: ActivitySnapshot) => void): () => void
   on(channel: 'display', cb: (d: DisplayInfo) => void): () => void
@@ -129,3 +135,4 @@ export type Command =
   | { type: 'say-hi' }
   | { type: 'chat' }
   | { type: 'reload-key' }
+  | { type: 'hide'; minutes: number }

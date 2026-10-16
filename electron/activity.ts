@@ -28,8 +28,10 @@ export function startActivityWatcher(ownPid: number, onChange: Listener): () => 
       } else {
         const app = w.owner.name || w.owner.path?.split(/[\\/]/).pop() || ''
         const { category, label } = classify(app, w.title, settings.categoryRules)
-        const display = screen.getDisplayMatching(w.bounds)
-        const b = w.bounds
+        // get-windows reports physical pixels; Electron's displays are in DIPs. Without this, a maximized
+        // window on a 125% display looks "fullscreen" and she hides, and perches land in the wrong place.
+        const b = process.platform === 'win32' ? screen.screenToDipRect(null, w.bounds) : w.bounds
+        const display = screen.getDisplayMatching(b)
         const d = display.bounds
         const wa = display.workArea
         const isShell = /explorer|searchhost|shellexperiencehost|startmenuexperiencehost|lockapp/i.test(app)

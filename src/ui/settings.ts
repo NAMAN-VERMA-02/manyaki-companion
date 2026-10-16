@@ -26,6 +26,7 @@ function fill(s: Settings) {
   $<HTMLInputElement>('checkin').value = String(s.checkInMinutes)
   $<HTMLInputElement>('launch').checked = s.launchAtLogin
   $<HTMLInputElement>('dnd').checked = s.dnd
+  $<HTMLInputElement>('muted').checked = s.voiceMuted
   $<HTMLInputElement>('neural').checked = s.neuralVoice
   $<HTMLInputElement>('titles').checked = s.shareTitles
   $<HTMLTextAreaElement>('work').value = s.categoryRules.work.join(', ')
@@ -102,6 +103,7 @@ async function init() {
   num('checkin', 'checkInMinutes', 5, 120)
   $<HTMLInputElement>('launch').onchange = (e) => save({ launchAtLogin: (e.target as HTMLInputElement).checked })
   $<HTMLInputElement>('dnd').onchange = (e) => save({ dnd: (e.target as HTMLInputElement).checked })
+  $<HTMLInputElement>('muted').onchange = (e) => save({ voiceMuted: (e.target as HTMLInputElement).checked })
   $<HTMLInputElement>('neural').onchange = (e) => save({ neuralVoice: (e.target as HTMLInputElement).checked })
   $<HTMLInputElement>('titles').onchange = (e) => save({ shareTitles: (e.target as HTMLInputElement).checked })
   const rules = () => {

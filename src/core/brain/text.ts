@@ -46,7 +46,7 @@ export class TextBrain {
       contents.push(res.candidates?.[0]?.content ?? { role: 'model', parts: calls.map((c) => ({ functionCall: c })) })
       contents.push({
         role: 'user',
-        parts: calls.map((c) => ({ functionResponse: { id: c.id, name: c.name, response: runTool(this.tools, c.name ?? '', (c.args ?? {}) as Record<string, unknown>) } }))
+        parts: await Promise.all(calls.map(async (c) => ({ functionResponse: { id: c.id, name: c.name, response: await runTool(this.tools, c.name ?? '', (c.args ?? {}) as Record<string, unknown>) } })))
       })
       if (text.trim()) {
         const heard = text.match(/<heard>([\s\S]*?)<\/heard>/)?.[1]?.trim()
