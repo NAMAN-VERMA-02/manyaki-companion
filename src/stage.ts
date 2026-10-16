@@ -37,7 +37,6 @@ export class Stage {
   private clickCount = 0
   private clickTimer = 0
   private last = performance.now()
-  private acc = 0
   private frames = 0
   private fpsT = 0
   private hiddenAlpha = false
@@ -66,6 +65,12 @@ export class Stage {
     window.addEventListener('mousemove', (e) => this.onMove(e))
     window.addEventListener('mousedown', (e) => this.onDown(e))
     window.addEventListener('mouseup', (e) => this.onUp(e))
+    this.bridge.on('cursor', (p) => {
+      if (p.x === this.cursorX && p.y === this.cursorY) return
+      this.cursorX = p.x
+      this.cursorY = p.y
+      this.body.cursorMovedAt = performance.now()
+    })
     this.bridge.on('display', (d) => {
       this.display = d
       this.resize()
@@ -79,7 +84,7 @@ export class Stage {
       this.bridge.log('info', `loaded ${n}/${urls.length} mocap clips`)
     })
 
-    requestAnimationFrame(this.loop)
+    this.schedule()
   }
 
   setSize(px: number) {
@@ -96,26 +101,61 @@ export class Stage {
   }
 
   private resize() {
-    this.avatar?.resize(window.innerWidth, window.innerHeight)
+    if (!this.avatar) return
+    this.avatar.setDisplayHeight(this.display.bounds.height)
+    if (!this.bridge.followWindow) this.avatar.setView(0, 0, window.innerWidth, window.innerHeight)
+  }
+
+  private lastRect = { x: NaN, y: NaN, width: 0, height: 0 }
+
+  /** Keep the (small) window wrapped around her, the bubble, emotes and the chat box. */
+  private followWindow() {
+    const a = this.avatar
+    const box = a.screenBox()
+    const cx = (box.left + box.right) / 2
+    const bubbleOn = this.bubble.visible
+    const chatOn = !document.getElementById('chat')!.classList.contains('hidden')
+    const bw = bubbleOn ? this.bubble.element.offsetWidth + 40 : 0
+    const bh = bubbleOn ? this.bubble.element.offsetHeight + 24 : 0
+    const width = quant(Math.max(box.right - box.left + a.heightPx * 0.5, bw, chatOn ? 360 : 0, 220), 32)
+    const top = box.top - Math.max(bh, a.heightPx * 0.32) - 8
+    const floor = this.display.workArea.y + this.display.workArea.height - this.display.bounds.y
+    const bottom = Math.min(floor, box.bottom + 32)
+    const height = quant(bottom - top, 32)
+    const want = { x: Math.round(cx - width / 2), y: Math.round(bottom - height), width, height }
+    const r = this.lastRect
+    if (want.x === r.x && want.y === r.y && want.width === r.width && want.height === r.height) return
+    this.lastRect = want
+    const got = this.bridge.setWindowRect(want)
+    this.avatar.setView(got.x, got.y, got.width, got.height)
   }
 
   private targetFps() {
-    if (this.hiddenAlpha) return 8
+    // Each frame costs CPU on a transparent window, so the rate follows what she is doing.
+    // Measured on an Intel UHD laptop: ~4% of one core per frame-per-second.
+    if (this.hiddenAlpha) return 2
     const m = this.body.mode
-    if (this.body.conv !== 'none' || m === 'walk' || m === 'fall' || m === 'jump' || m === 'drag' || m === 'act' || m === 'land') return 60
-    if (this.hover) return 60
-    return 30
+    if (m === 'walk' || m === 'fall' || m === 'jump' || m === 'drag' || m === 'land') return 60
+    if (this.body.conv === 'talking' || m === 'act') return 30
+    if (this.body.conv !== 'none' || this.hover || this.emotes.active || this.face.animating) return 24
+    if (m === 'sleep') return 6
+    if (m === 'sit') return 10
+    return 12
+  }
+
+  /**
+   * Frames are paced by a timer at the target rate and then aligned to vsync with one rAF, instead of
+   * waking at 60 Hz and skipping: idle wake-ups are what cost CPU on a transparent window.
+   */
+  private schedule() {
+    const wait = Math.max(0, 1000 / this.targetFps() - (performance.now() - this.last) - 2)
+    setTimeout(() => requestAnimationFrame(this.loop), wait)
   }
 
   private readonly loop = (now: number) => {
-    requestAnimationFrame(this.loop)
-    const raw = Math.min(0.1, (now - this.last) / 1000)
+    const dt = Math.min(0.1, Math.max(0.001, (now - this.last) / 1000))
     this.last = now
-    this.acc += raw
-    const step = 1 / this.targetFps()
-    if (this.acc < step * 0.92) return
-    const dt = Math.min(0.1, this.acc)
-    this.acc = 0
+    this.schedule()
 
     this.frames++
     this.fpsT += dt
@@ -132,6 +172,7 @@ export class Stage {
     this.blush.set(this.face.blush)
     this.avatar.vrm.update(dt)
     this.emotes.update(dt)
+    if (this.bridge.followWindow) this.followWindow()
     this.avatar.render()
 
     // Click-through: capture the mouse only over her pixels or our UI.
@@ -142,14 +183,16 @@ export class Stage {
     }
     this.updateIgnore()
 
+    // DOM overlays are positioned in window coordinates.
+    const v = this.avatar.view
     const box = this.avatar.screenBox()
-    const cx = box.left + (box.right - box.left) / 2
-    this.bubble.place(cx, box.top)
-    this.chip.place(cx, box.bottom - 26)
+    const cx = box.left + (box.right - box.left) / 2 - v.x
+    this.bubble.place(cx, box.top - v.y)
+    this.chip.place(cx, box.bottom - 26 - v.y)
     const chat = document.getElementById('chat')!
     if (!chat.classList.contains('hidden')) {
-      chat.style.left = `${Math.max(160, Math.min(window.innerWidth - 160, cx))}px`
-      chat.style.top = `${Math.max(8, Math.min(window.innerHeight - 60, box.bottom - this.avatar.heightPx * 0.35))}px`
+      chat.style.left = `${Math.max(170, Math.min(window.innerWidth - 170, cx))}px`
+      chat.style.top = `${Math.max(8, Math.min(window.innerHeight - 60, box.bottom - this.avatar.heightPx * 0.35 - v.y))}px`
     }
   }
 
@@ -165,24 +208,31 @@ export class Stage {
     document.body.style.cursor = capture && this.hover ? 'grab' : ''
   }
 
+  /** Mouse event -> display coordinates. */
+  private pt(e: MouseEvent) {
+    return { x: e.clientX + this.avatar.view.x, y: e.clientY + this.avatar.view.y }
+  }
+
   private onMove(e: MouseEvent) {
-    this.cursorX = e.clientX
-    this.cursorY = e.clientY
+    const p = this.pt(e)
+    this.cursorX = p.x
+    this.cursorY = p.y
     if (this.body) this.body.cursorMovedAt = performance.now()
     this.overUi = this.interactive.some((el) => !el.classList.contains('hidden') && el.contains(e.target as Node))
     if (this.pointerDown && !this.dragging) {
-      if (Math.hypot(e.clientX - this.pointerDown.x, e.clientY - this.pointerDown.y) > 6) {
+      if (Math.hypot(p.x - this.pointerDown.x, p.y - this.pointerDown.y) > 6) {
         this.dragging = true
         this.body.grab(this.pointerDown.x, this.pointerDown.y)
         document.body.style.cursor = 'grabbing'
       }
     }
-    if (this.dragging) this.body.dragTo(e.clientX, e.clientY)
+    if (this.dragging) this.body.dragTo(p.x, p.y)
   }
 
   private onDown(e: MouseEvent) {
     if (e.button !== 0 || !this.hover) return
-    this.pointerDown = { x: e.clientX, y: e.clientY, t: performance.now() }
+    const p = this.pt(e)
+    this.pointerDown = { x: p.x, y: p.y, t: performance.now() }
   }
 
   private onUp(e: MouseEvent) {
@@ -197,7 +247,7 @@ export class Stage {
     if (!down) return
     // Head = the top ~22% of her height.
     const box = this.avatar.screenBox()
-    const zone: ClickZone = e.clientY < box.top + this.avatar.heightPx * 0.22 ? 'head' : 'body'
+    const zone: ClickZone = this.pt(e).y < box.top + this.avatar.heightPx * 0.22 ? 'head' : 'body'
     this.clickCount++
     clearTimeout(this.clickTimer)
     if (this.clickCount === 2) {
@@ -216,3 +266,5 @@ export class Stage {
 
   rapid: number[] = []
 }
+
+const quant = (v: number, step: number) => Math.ceil(v / step) * step

@@ -5,6 +5,8 @@ const bridge: Bridge = {
   platform: process.platform,
   debug: process.argv.includes('--manyaki-debug'),
   getDisplay: () => ipcRenderer.invoke('display:get'),
+  followWindow: !process.argv.includes('--manyaki-debug'),
+  setWindowRect: (r) => ipcRenderer.sendSync('window:rect', r),
   setIgnoreMouse: (ignore) => ipcRenderer.send('mouse:ignore', ignore),
   setFocusable: (focusable) => ipcRenderer.send('window:focusable', focusable),
   getApiKey: () => ipcRenderer.invoke('key:get'),

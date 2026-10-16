@@ -3,7 +3,7 @@ import { MicVAD } from '@ricky0123/vad-web'
 export interface MicEvents {
   /** Speech started (after the VAD is confident). `preRoll` is ~300 ms of audio before the trigger. */
   onSpeechStart(preRoll: Float32Array[]): void
-  /** A 16 kHz mono frame while speech is active (and for a short tail afterwards). */
+  /** A 16 kHz mono frame (96 ms) while speech is active (and for a short tail afterwards). */
   onFrame(frame: Float32Array): void
   /** Speech ended; `audio` is the whole utterance at 16 kHz when the VAD has it (used by the text fallback). */
   onSpeechEnd(audio?: Float32Array): void
@@ -27,7 +27,15 @@ export class Mic {
 
   constructor(private readonly ev: MicEvents) {}
 
-  async start(): Promise<boolean> {
+  private starting: Promise<boolean> | null = null
+
+  /** Idempotent: concurrent calls share one initialisation (two MicVADs would double the CPU cost). */
+  start(): Promise<boolean> {
+    if (!this.starting) this.starting = this.doStart().finally(() => { this.starting = null })
+    return this.starting
+  }
+
+  private async doStart(): Promise<boolean> {
     if (this.vad) {
       await this.vad.start()
       this.enabled = true
@@ -35,18 +43,24 @@ export class Mic {
     }
     try {
       this.vad = await MicVAD.new({
-        model: 'v5',
+        // Legacy Silero works on 96 ms frames (v5 uses 32 ms): a third of the inferences for the same accuracy here.
+        model: 'legacy',
         baseAssetPath: VENDOR,
         onnxWASMBasePath: VENDOR,
-        positiveSpeechThreshold: 0.6,
-        negativeSpeechThreshold: 0.4,
+        positiveSpeechThreshold: 0.55,
+        negativeSpeechThreshold: 0.38,
         redemptionMs: 700,
         preSpeechPadMs: 300,
         minSpeechMs: 250,
         startOnLoad: true,
+        // A single WASM thread: the model is tiny and multi-threaded ORT busy-spins its workers between frames.
+        ortConfig: (ort) => {
+          ort.env.wasm.numThreads = 1
+          ort.env.wasm.proxy = false
+        },
         getStream: () =>
           navigator.mediaDevices.getUserMedia({
-            audio: { channelCount: 1, echoCancellation: true, noiseSuppression: true, autoGainControl: true }
+            audio: { channelCount: 1, echoCancellation: true, noiseSuppression: true, autoGainControl: false }
           }),
         onFrameProcessed: (p, frame) => this.frame(p.isSpeech, frame),
         onSpeechRealStart: () => {
@@ -76,7 +90,7 @@ export class Mic {
     this.herSpeaking = speaking
     this.vad?.setOptions(speaking
       ? { positiveSpeechThreshold: 0.85, negativeSpeechThreshold: 0.6 }
-      : { positiveSpeechThreshold: 0.6, negativeSpeechThreshold: 0.4 })
+      : { positiveSpeechThreshold: 0.55, negativeSpeechThreshold: 0.38 })
   }
 
   private frame(_isSpeech: number, frame: Float32Array) {
@@ -85,15 +99,15 @@ export class Mic {
       if (!this.active) this.tail--
       return
     }
-    // Keep ~640 ms of history (VAD confirmation delay + padding) so the first syllable is not clipped.
+    // Keep ~670 ms of history (VAD confirmation delay + padding) so the first syllable is not clipped.
     this.ring.push(frame)
-    if (this.ring.length > 20) this.ring.shift()
+    if (this.ring.length > 7) this.ring.shift()
   }
 
   private end(audio?: Float32Array) {
     if (!this.active) return
     this.active = false
-    this.tail = 6 // ~200 ms more audio helps the server's end-of-turn detection
+    this.tail = 2 // ~200 ms more audio helps the server's end-of-turn detection
     this.ev.onSpeechEnd(audio)
   }
 }

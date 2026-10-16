@@ -92,6 +92,10 @@ export interface Bridge {
   platform: string
   debug: boolean
   getDisplay(): Promise<DisplayInfo>
+  /** true: the window is a small rect that follows her (normal); false: it covers the display (debug). */
+  followWindow: boolean
+  /** Move/resize the window (display-relative DIPs). Returns the bounds the OS actually applied. */
+  setWindowRect(r: Rect): Rect
   setIgnoreMouse(ignore: boolean): void
   setFocusable(focusable: boolean): void
   getApiKey(): Promise<string>
@@ -112,6 +116,7 @@ export interface Bridge {
   on(channel: 'settings', cb: (s: Settings) => void): () => void
   on(channel: 'command', cb: (cmd: Command) => void): () => void
   on(channel: 'memory', cb: (m: MemoryData) => void): () => void
+  on(channel: 'cursor', cb: (p: { x: number; y: number }) => void): () => void
 }
 
 export type Command =

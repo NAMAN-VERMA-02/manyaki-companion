@@ -171,7 +171,7 @@ export class Companion implements ToolHost {
   private onMicFrame(f: Float32Array) {
     if (!this.streaming) return
     this.pendingFrames.push(f)
-    if (this.live.isOpen && this.pendingFrames.length >= 3) this.flushFrames()
+    if (this.live.isOpen) this.flushFrames()
   }
 
   private flushFrames() {

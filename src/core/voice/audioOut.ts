@@ -16,6 +16,7 @@ export class AudioOut {
     this.analyser.fftSize = 512
     this.gain.connect(this.analyser)
     this.analyser.connect(this.ctx.destination)
+    this.idleSuspend()
   }
 
   get speaking() { return this.sources.size > 0 }
@@ -54,8 +55,17 @@ export class AudioOut {
     this.sources.add(src)
     src.onended = () => {
       this.sources.delete(src)
-      if (!this.sources.size) this.endedCb?.()
+      if (!this.sources.size) { this.endedCb?.(); this.idleSuspend() }
     }
+  }
+
+  private suspendTimer = 0
+  /** A running AudioContext keeps an audio thread busy; park it when she has been quiet for a bit. */
+  private idleSuspend() {
+    clearTimeout(this.suspendTimer)
+    this.suspendTimer = window.setTimeout(() => {
+      if (!this.sources.size && this.ctx.state === 'running') void this.ctx.suspend()
+    }, 4000)
   }
 
   /** Barge-in: silence immediately and drop everything queued. */
@@ -68,6 +78,7 @@ export class AudioOut {
     this.sources.clear()
     this.playHead = this.ctx.currentTime
     if (had) this.endedCb?.()
+    this.idleSuspend()
   }
 
   /** 0..1 loudness of what is playing right now. */

@@ -63,24 +63,40 @@ export class Avatar {
   get scale() { return this.heightPx / this.modelHeight }
   get modelMetres() { return this.modelHeight }
 
-  resize(w: number, h: number) {
-    this.width = w
+  /** The window may be a small rect that follows her: (x, y) is its top-left in display coordinates. */
+  readonly view = { x: 0, y: 0 }
+
+  /** displayHeight: logical height of the display (world y = displayHeight - screen y). */
+  setDisplayHeight(h: number) {
     this.height = h
-    this.renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, 1.5))
-    this.renderer.setSize(w, h, false)
     this.updateCamera()
   }
 
+  /** Set the window's rect in display coordinates; resizes the canvas only when the size changes. */
+  setView(x: number, y: number, w: number, h: number) {
+    this.view.x = x
+    this.view.y = y
+    if (w !== this.width || h !== this.viewH) {
+      this.width = w
+      this.viewH = h
+      this.renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, 1.5))
+      this.renderer.setSize(w, h, false)
+    }
+    this.updateCamera()
+  }
+
+  private viewH = 1
+
   private updateCamera() {
     const ppm = this.scale
-    this.camera.left = 0
-    this.camera.right = this.width / ppm
-    this.camera.top = this.height / ppm
-    this.camera.bottom = 0
+    this.camera.left = this.view.x / ppm
+    this.camera.right = (this.view.x + this.width) / ppm
+    this.camera.top = (this.height - this.view.y) / ppm
+    this.camera.bottom = (this.height - this.view.y - this.viewH) / ppm
     this.camera.updateProjectionMatrix()
   }
 
-  /** Screen point (DIPs, top-left origin) -> world metres. */
+  /** Display point (DIPs, top-left origin) -> world metres. */
   toWorld(sx: number, sy: number, z = 0, out = new THREE.Vector3()) {
     const ppm = this.scale
     return out.set(sx / ppm, (this.height - sy) / ppm, z)
@@ -119,12 +135,12 @@ export class Avatar {
     this.renderer.render(this.scene, this.camera)
   }
 
-  /** True if the pixel under the cursor (screen DIPs) is part of her. Call right after render(). */
+  /** True if the pixel under the cursor (display DIPs) is part of her. Call right after render(). */
   hitTest(x: number, y: number): boolean {
     const gl = this.renderer.getContext()
     const pr = this.renderer.getPixelRatio()
-    const px = Math.floor(x * pr)
-    const py = Math.floor((this.height - y) * pr)
+    const px = Math.floor((x - this.view.x) * pr)
+    const py = Math.floor((this.view.y + this.viewH - y) * pr)
     if (px < 0 || py < 0 || px >= gl.drawingBufferWidth || py >= gl.drawingBufferHeight) return false
     gl.readPixels(px, py, 1, 1, gl.RGBA, gl.UNSIGNED_BYTE, this.pixel)
     return this.pixel[3] > 24

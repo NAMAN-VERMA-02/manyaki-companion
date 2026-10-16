@@ -64,6 +64,8 @@ export class Emotes {
 
   constructor(private readonly avatar: Avatar) {}
 
+  get active() { return this.live.length > 0 }
+
   pop(kind: string) {
     const glyph = EMOTE_GLYPH[kind] ?? kind
     let mat = this.cache.get(glyph)

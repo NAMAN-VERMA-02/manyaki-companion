@@ -49,9 +49,12 @@ function load(win: BrowserWindow, page: 'index' | 'settings') {
 }
 
 function createOverlay() {
-  const { bounds } = displayInfo()
+  const { bounds, workArea } = displayInfo()
+  // Normally a small window that the renderer moves along with her (transparent windows on Windows cost
+  // CPU proportional to their area every frame). In debug mode it covers the display for the debug panel.
+  const initial = DEBUG ? bounds : { x: workArea.x + workArea.width - 420, y: workArea.y + workArea.height - 480, width: 400, height: 480 }
   overlay = new BrowserWindow({
-    ...bounds,
+    ...initial,
     transparent: true,
     frame: false,
     resizable: false,
@@ -187,6 +190,16 @@ function applySettings(patch: Partial<Settings>): Settings {
 
 function registerIpc() {
   ipcMain.handle('display:get', () => displayInfo())
+  ipcMain.on('window:rect', (e, r: { x: number; y: number; width: number; height: number }) => {
+    if (!overlay) { e.returnValue = r; return }
+    const d = displayInfo().bounds
+    const want = { x: Math.round(d.x + r.x), y: Math.round(d.y + r.y), width: Math.max(1, Math.round(r.width)), height: Math.max(1, Math.round(r.height)) }
+    const cur = overlay.getBounds()
+    if (cur.width !== want.width || cur.height !== want.height) overlay.setBounds(want)
+    else if (cur.x !== want.x || cur.y !== want.y) overlay.setPosition(want.x, want.y)
+    const got = overlay.getBounds()
+    e.returnValue = { x: got.x - d.x, y: got.y - d.y, width: got.width, height: got.height }
+  })
   ipcMain.on('mouse:ignore', (_e, ignore: boolean) => overlay?.setIgnoreMouseEvents(ignore, { forward: true }))
   ipcMain.on('window:focusable', (_e, focusable: boolean) => {
     if (!overlay) return
@@ -267,11 +280,23 @@ app.whenReady().then(() => {
 
   globalShortcut.register('Control+Alt+Space', () => command({ type: 'toggle-listen' }))
 
+  // Her eyes follow the cursor anywhere on screen, not only over her small window.
+  let lastCursor = ''
+  setInterval(() => {
+    if (!overlay || overlay.isDestroyed()) return
+    const p = screen.getCursorScreenPoint()
+    const d = displayInfo().bounds
+    const key = `${p.x},${p.y}`
+    if (key === lastCursor) return
+    lastCursor = key
+    overlay.webContents.send('cursor', { x: p.x - d.x, y: p.y - d.y })
+  }, 50)
+
   stopActivity = startActivityWatcher(process.pid, (a) => overlay?.webContents.send('activity', a))
 
   const onDisplay = () => {
     const info = displayInfo()
-    overlay?.setBounds(info.bounds)
+    if (DEBUG) overlay?.setBounds(info.bounds)
     send('display', info)
   }
   screen.on('display-metrics-changed', onDisplay)

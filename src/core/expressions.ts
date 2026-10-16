@@ -41,6 +41,9 @@ export class Expressions {
 
   constructor(private readonly vrm: VRM) {}
 
+  /** Mid-blink or mid-transition: worth rendering smoothly for a moment. */
+  get animating() { return this.blinkPhase >= 0 || this.mouth > 0.02 }
+
   /** Show an emotion. With holdMs it reverts to `neutral` (or the base mood) afterwards. */
   set(e: Emotion, holdMs = 0) {
     this.emotion = e
