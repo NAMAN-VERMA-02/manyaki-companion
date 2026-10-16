@@ -3,7 +3,7 @@ import type { Avatar } from './avatar'
 import type { Motion } from './anim/motion'
 import type { Layers } from './anim/layers'
 import type { Emotion, Expressions } from './expressions'
-import type { Emotes } from './fx'
+import type { Emotes, Squash } from './fx'
 import type { Laptop } from './laptop'
 
 export type Action =
@@ -57,6 +57,7 @@ export class Behavior {
   private glance = { x: 0, y: 0 }
   hoverSince = 0
   onLanded?: (hard: boolean) => void
+  squash?: Squash
   onWoke?: () => void
 
   constructor(
@@ -161,6 +162,7 @@ export class Behavior {
     if (a === 'none' || this.usingLaptop || this.mode === 'drag' || this.mode === 'fall' || this.mode === 'jump') return
     if (this.sleeping) this.wake()
     if (a === 'jump') {
+      this.squash?.impulse(0.7)
       this.vy = -700 * this.s
       this.startFall(0, this.vy)
       return
@@ -264,6 +266,7 @@ export class Behavior {
 
   grab(cx: number, cy: number) {
     if (this.sleeping) this.wake()
+    this.squash?.impulse(0.5)
     this.mode = 'drag'
     this.dragOffset = { x: this.x - cx, y: this.y - cy }
     this.lastCursor = { x: cx, y: cy, t: performance.now() }
@@ -305,6 +308,7 @@ export class Behavior {
     this.jumpFrom = { x: this.x, y: this.y }
     this.jumpTo = { x, y: p.y, platform: p }
     this.jumpT = 0
+    this.squash?.impulse(0.8)
     void this.motion.once('jump', { fade: 0.15, speed: 1.2 })
     this.emotes.pop('sparkle')
   }
@@ -325,6 +329,8 @@ export class Behavior {
   }
 
   private land(hard: boolean) {
+    // Squash in proportion to how fast she hit the ground.
+    this.squash?.impulse(-Math.min(1, 0.35 + Math.max(0, this.vy) / (2200 * this.s)))
     this.vx = 0
     this.vy = 0
     this.mode = 'land'

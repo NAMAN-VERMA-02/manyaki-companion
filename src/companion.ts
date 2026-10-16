@@ -540,6 +540,7 @@ export class Companion implements ToolHost {
     const rapid = this.stage.rapid.length >= 5
     if (rapid) {
       this.stage.rapid = []
+      this.stage.squash.impulse(-0.8)
       this.react('pout', 'pout', 'anger')
       this.stage.bubble.show('Mou~ stop poking me! 😤', { holdMs: 2500 })
       setTimeout(() => { this.react('happy', 'none', 'heart'); this.stage.bubble.show('…okay, I forgive you. Hehe.', { holdMs: 2500 }) }, 3200)
@@ -548,6 +549,8 @@ export class Companion implements ToolHost {
     if (this.stage.body.conv === 'listening') return
     if (this.audio.speaking) { this.audio.stop(); this.local.stop(); return } // tap to interrupt
     const kind = zone === 'head' ? 'headpat' : 'poke'
+    // Jelly wobble: a pat squishes her down a little, a poke makes her boing.
+    this.stage.squash.impulse(zone === 'head' ? -0.45 : 0.35)
     const l = OFFLINE_LINES[kind]
     this.react(l.emotion, l.action, zone === 'head' ? 'heart' : 'sparkle')
     if (zone === 'head') this.stage.face.setBlush(1)

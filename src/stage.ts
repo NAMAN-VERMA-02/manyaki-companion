@@ -3,7 +3,7 @@ import { Avatar } from './core/avatar'
 import { Motion } from './core/anim/motion'
 import { Layers } from './core/anim/layers'
 import { Expressions } from './core/expressions'
-import { Blush, Emotes } from './core/fx'
+import { Blush, Emotes, Squash, tuneSpringBones } from './core/fx'
 import { Behavior } from './core/behavior'
 import { Laptop } from './core/laptop'
 import { Bubble, StatusChip } from './ui/bubble'
@@ -22,6 +22,7 @@ export class Stage {
   blush!: Blush
   emotes!: Emotes
   laptop!: Laptop
+  squash!: Squash
   body!: Behavior
   readonly bubble = new Bubble()
   readonly chip = new StatusChip()
@@ -60,8 +61,11 @@ export class Stage {
     this.blush = new Blush(this.avatar)
     this.emotes = new Emotes(this.avatar)
     this.laptop = new Laptop(this.avatar)
+    this.squash = new Squash(this.avatar)
+    tuneSpringBones(this.avatar)
     this.body = new Behavior(this.avatar, this.motion, this.layers, this.face, this.emotes)
     this.body.setDisplay(this.display)
+    this.body.squash = this.squash
 
     this.interactive.push(this.bubble.element, document.getElementById('chat')!, document.getElementById('debug')!)
     window.addEventListener('resize', () => this.resize())
@@ -144,6 +148,7 @@ export class Stage {
     const m = this.body.mode
     if (m === 'walk' || m === 'fall' || m === 'jump' || m === 'drag' || m === 'land') return 60
     if (this.body.conv === 'talking' || m === 'act') return 30
+    if (this.squash.active) return 60
     if (this.laptop.busy) return 30
     if (this.body.conv !== 'none' || this.hover || this.emotes.active || this.face.animating) return 24
     if (m === 'sleep') return 6
@@ -181,6 +186,7 @@ export class Stage {
     this.avatar.vrm.update(dt)
     this.emotes.update(dt)
     this.laptop.update(dt)
+    this.squash.update(dt)
     if (this.bridge.followWindow) this.followWindow()
     this.avatar.render()
 

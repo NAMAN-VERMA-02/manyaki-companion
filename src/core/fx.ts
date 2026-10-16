@@ -114,3 +114,57 @@ function easeOutBack(x: number) {
   const c3 = c1 + 1
   return 1 + c3 * Math.pow(x - 1, 3) + c1 * Math.pow(x - 1, 2)
 }
+
+/**
+ * Cartoon squash-and-stretch on her whole body: a damped spring driving her root scale (anchored at
+ * her feet). Landings squash, jumps stretch, pokes wobble, then she springs back.
+ */
+export class Squash {
+  private x = 0
+  private v = 0
+
+  constructor(private readonly avatar: Avatar) {}
+
+  /** Positive = stretch up, negative = squash down. Roughly -1..1. */
+  impulse(strength: number) {
+    this.v += strength * 6
+  }
+
+  get active() { return Math.abs(this.x) > 0.002 || Math.abs(this.v) > 0.01 }
+
+  update(dt: number) {
+    // Stiff, lightly damped spring: two or three visible wobbles, then rest.
+    const k = 220
+    const c = 9
+    const steps = Math.ceil(dt / (1 / 120))
+    const h = dt / steps
+    for (let i = 0; i < steps; i++) {
+      this.v += (-k * this.x - c * this.v) * h
+      this.x += this.v * h
+    }
+    this.x = Math.max(-0.15, Math.min(0.15, this.x))
+    const sy = 1 + this.x
+    const sxz = 1 - this.x * 0.55 // keep volume roughly constant
+    this.avatar.root.scale.set(sxz, sy, sxz)
+  }
+}
+
+/** Retunes the model's hair/skirt spring bones for a bouncier but settled feel. Chest bones keep the model's own values. */
+export function tuneSpringBones(avatar: Avatar) {
+  const m = avatar.vrm.springBoneManager
+  if (!m) return
+  for (const j of m.joints) {
+    const n = j.bone.name
+    if (/Hair/i.test(n)) {
+      j.settings.stiffness = 0.6
+      j.settings.dragForce = 0.22 // less drag = more bounce
+      j.settings.gravityPower = 0.06
+      j.settings.gravityDir.set(0, -1, 0)
+    } else if (/Skirt/i.test(n)) {
+      j.settings.stiffness = 0.65
+      j.settings.dragForce = 0.18 // the model ships with 0, which flaps forever
+      j.settings.gravityPower = 0.12
+      j.settings.gravityDir.set(0, -1, 0)
+    }
+  }
+}
