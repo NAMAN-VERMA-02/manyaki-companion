@@ -38,7 +38,7 @@ export function toolDeclarations(live: boolean): FunctionDeclaration[] {
     {
       name: 'start_focus',
       description: 'Start a focus (pomodoro) timer when they want to concentrate.',
-      parameters: { type: Type.OBJECT, properties: { minutes: { type: Type.NUMBER, description: '5-120, default 25' } } }
+      parameters: { type: Type.OBJECT, properties: { minutes: { type: Type.NUMBER, description: '1-120, default 25' } } }
     },
     { name: 'stop_focus', description: 'Stop the running focus timer.', parameters: { type: Type.OBJECT, properties: {} } },
     {
@@ -77,7 +77,7 @@ export function runTool(host: ToolHost, name: string, args: Record<string, unkno
       }
       case 'start_focus': {
         const m = Math.round(Number(args.minutes) || 25)
-        return { result: host.startFocus(Math.max(5, Math.min(120, m))) }
+        return { result: host.startFocus(Math.max(1, Math.min(120, m))) }
       }
       case 'stop_focus': return { result: host.stopFocus() }
       case 'add_goal': return { result: host.addGoal(String(args.text ?? '')) }

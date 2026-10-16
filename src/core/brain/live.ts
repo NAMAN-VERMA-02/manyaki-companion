@@ -179,7 +179,9 @@ export class LiveBrain {
           id: fc.id,
           name: fc.name,
           response,
-          ...(NON_BLOCKING.has(fc.name ?? '') ? { scheduling: FunctionResponseScheduling.SILENT } : {})
+          // WHEN_IDLE: if she already started talking this is just context; if the turn held only the
+          // gesture call (common), it prompts her to go on and actually speak. SILENT made her go mute.
+          ...(NON_BLOCKING.has(fc.name ?? '') ? { scheduling: FunctionResponseScheduling.WHEN_IDLE } : {})
         }
       })
       this.session?.sendToolResponse({ functionResponses: responses })
