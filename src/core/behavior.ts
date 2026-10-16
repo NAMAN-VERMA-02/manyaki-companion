@@ -281,8 +281,26 @@ export class Behavior {
     const dt = Math.max(1, now - this.lastCursor.t) / 1000
     this.cursorVel = { x: (cx - this.lastCursor.x) / dt, y: (cy - this.lastCursor.y) / dt }
     this.lastCursor = { x: cx, y: cy, t: now }
-    this.x = cx + this.dragOffset.x
-    this.y = cy + this.dragOffset.y
+    // Keep her on screen: the taskbar line is solid ground, she can't be pushed through it.
+    const f = this.floor()
+    this.x = clamp(cx + this.dragOffset.x, f.left, f.right)
+    this.y = clamp(cy + this.dragOffset.y, this.avatar.heightPx * 0.4, f.y)
+  }
+
+  /** Put her back on the taskbar, standing, visible, whatever state she was in. */
+  reset() {
+    const f = this.floor()
+    this.sleeping = false
+    this.face.eyesClosed = false
+    this.layers.lookWeight = 1
+    this.vx = 0
+    this.vy = 0
+    this.usingLaptop = false
+    this.actToken++
+    this.x = f.left + (f.right - f.left) * 0.8
+    this.y = f.y
+    this.conv = 'none'
+    this.toStand()
   }
 
   release() {
@@ -362,6 +380,10 @@ export class Behavior {
         if (this.vy > 0 && this.y >= p.y && prevY <= p.y + 1) {
           this.y = p.y
           this.land(this.vy > 1400 * s)
+        } else if (this.y >= f.y) {
+          // Already at/below the taskbar line (e.g. dropped low): the floor is solid, land on it.
+          this.y = f.y
+          this.land(this.vy > 1400 * s)
         }
         break
       }
@@ -392,6 +414,14 @@ export class Behavior {
       }
       default:
         break
+    }
+
+    // Safety net: never let her end up off-screen or inside the taskbar.
+    if (this.mode !== 'drag' && this.mode !== 'fall' && this.mode !== 'jump') {
+      if (!Number.isFinite(this.x) || !Number.isFinite(this.y) || this.y > f.y + 2 || this.x < f.left - 50 || this.x > f.right + 50) {
+        this.x = Number.isFinite(this.x) ? clamp(this.x, f.left, f.right) : f.right
+        this.y = f.y
+      }
     }
 
     // Facing: sideways while walking/falling with speed, otherwise turned toward the viewer.

@@ -3,7 +3,7 @@
   <head>
     <meta charset="UTF-8" />
     <meta http-equiv="Content-Security-Policy" content="default-src 'self' manyaki-asset:; style-src 'self' 'unsafe-inline'; img-src 'self' data: manyaki-asset:; script-src 'self'" />
-    <title>Manyaki · Settings</title>
+    <title>Manyaki</title>
     <link rel="stylesheet" href="./ui/settings.css" />
   </head>
   <body>
@@ -11,10 +11,89 @@
       <img src="manyaki-asset://icon.png" alt="" />
       <div>
         <h1>Manyaki</h1>
-        <p class="sub">your desktop study buddy 💗</p>
+        <p class="sub" id="status-line">your desktop study buddy 💗</p>
       </div>
+      <nav class="tabs">
+        <button data-tab="home" class="tab active">🏠 Home</button>
+        <button data-tab="settings" class="tab">⚙️ Settings</button>
+        <button id="quit" class="link" title="Quit Manyaki">⏻</button>
+      </nav>
     </header>
 
+    <main id="home" class="home">
+      <div class="col">
+        <section class="card">
+          <h2>Right now</h2>
+          <div class="chips">
+            <span class="chip" id="chip-brain">🧠 …</span>
+            <span class="chip" id="chip-mic">🎤 …</span>
+            <span class="chip" id="chip-voice">🔊 …</span>
+            <span class="chip" id="chip-place">📍 …</span>
+          </div>
+          <p class="last" id="last-line"></p>
+        </section>
+
+        <section class="card">
+          <h2>Quick controls</h2>
+          <div class="controls">
+            <label>Microphone
+              <select id="q-mic">
+                <option value="handsfree">🎤 Hands-free</option>
+                <option value="toggle">⌨️ Hotkey (Ctrl+Alt+Space)</option>
+                <option value="off">🚫 Off — I'll type</option>
+              </select>
+            </label>
+            <button class="toggle" id="q-mute">🔊 Voice on</button>
+            <button class="toggle" id="q-dnd">🌙 Do not disturb</button>
+            <button id="q-hide">🙈 Hide 30 min</button>
+            <button id="q-here">💃 Come to the middle</button>
+            <button id="q-corner">↘️ Go to corner</button>
+            <button id="q-hi">👋 Say hi</button>
+            <button id="q-reset" class="primary">🔄 Reset her</button>
+            <label>Size
+              <select id="q-size">
+                <option value="180">Tiny</option><option value="220">Small</option><option value="260">Medium</option>
+                <option value="320">Large</option><option value="400">Huge</option>
+              </select>
+            </label>
+          </div>
+        </section>
+
+        <section class="card">
+          <h2>Focus timer</h2>
+          <div class="timer" id="timer">--:--</div>
+          <p class="hint center" id="timer-label">Not running</p>
+          <div class="row center">
+            <input id="focus-min" type="number" min="1" max="120" value="25" class="small" /> <span class="hint">min</span>
+            <button id="focus-start" class="primary">▶ Start focus</button>
+            <button id="focus-stop">■ Stop</button>
+          </div>
+          <p class="hint center" id="streak"></p>
+        </section>
+      </div>
+
+      <div class="col">
+        <section class="card chat-card">
+          <h2>Chat</h2>
+          <div class="transcript" id="transcript"></div>
+          <form class="row" id="chat-form" autocomplete="off">
+            <input id="chat-text" maxlength="500" placeholder="Type to Manyaki… (e.g. &quot;open my Downloads folder&quot;)" />
+            <button class="primary" type="submit">Send 💌</button>
+          </form>
+        </section>
+
+        <section class="card">
+          <h2>Today's goals</h2>
+          <form class="row" id="goal-form" autocomplete="off">
+            <input id="goal-text" maxlength="120" placeholder="Add a goal for today" />
+            <button type="submit">Add</button>
+          </form>
+          <ul class="goals" id="home-goals"></ul>
+        </section>
+      </div>
+    </main>
+
+    <main id="settings" class="settings hidden">
     <section id="key-section">
       <h2>1 · Give her a voice</h2>
       <p>Manyaki talks using Google's Gemini. A key is <b>free</b> and takes a minute:</p>
@@ -91,6 +170,8 @@
       <h2>Animations</h2>
       <p class="hint">Want smoother motion? Drop Mixamo <code>.fbx</code> (or <code>.vrma</code>) clips into the anims folder and restart her. File names pick the slot: Idle, Happy Idle, Walking, Running, Jump, Falling, Landing, Hanging, Sitting, Sit To Stand, Waving, Nodding, Shaking Head, Thinking, Talking, Excited, Bashful, Stretching, Sleeping, Clapping, Dancing.</p>
     </section>
+
+    </main>
 
     <footer><span id="saved" class="hint"></span></footer>
     <script type="module" src="./ui/settings.ts"></script>

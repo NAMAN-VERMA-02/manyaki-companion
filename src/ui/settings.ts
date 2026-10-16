@@ -1,3 +1,4 @@
+import { initHome } from './home'
 import type { Bridge, MemoryData, Settings } from '../../shared/types'
 
 const bridge = (window as unknown as { manyaki: Bridge }).manyaki
@@ -131,3 +132,4 @@ async function init() {
 }
 
 void init()
+void initHome()

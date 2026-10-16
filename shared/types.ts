@@ -113,6 +113,13 @@ export interface Bridge {
   exportMemory(): Promise<string | null>
   notify(title: string, body: string): void
   openSettings(): void
+  /** Open the Home control window. */
+  openHome(): void
+  quit(): void
+  /** Send a command to her (from the Home window). */
+  sendCommand(cmd: Command): void
+  /** Overlay -> Home window status updates. */
+  reportStatus(s: Status): void
   /** Right-click menu with her controls (mic, mute, DND, focus, size, settings, quit). */
   showMenu(): void
   listAnims(): Promise<string[]>
@@ -125,6 +132,21 @@ export interface Bridge {
   on(channel: 'command', cb: (cmd: Command) => void): () => void
   on(channel: 'memory', cb: (m: MemoryData) => void): () => void
   on(channel: 'cursor', cb: (p: { x: number; y: number }) => void): () => void
+  on(channel: 'status', cb: (s: Status) => void): () => void
+  on(channel: 'tab', cb: (tab: string) => void): () => void
+}
+
+/** What she is doing right now, reported by the overlay to the Home window about once a second. */
+export interface Status {
+  mood: string
+  mode: string                 // stand | walk | sit | sleep | act | ...
+  conv: string                 // none | listening | thinking | talking
+  brain: 'live' | 'connecting' | 'fallback' | 'no-key' | 'bad-key' | 'offline'
+  mic: 'on' | 'off' | 'blocked'
+  hidden: boolean
+  timer: { kind: 'focus' | 'break'; endsAt: number; minutes: number } | null
+  activity: string             // "VS Code (work)"
+  lastLine: string             // what she last said
 }
 
 export type Command =
@@ -136,3 +158,7 @@ export type Command =
   | { type: 'chat' }
   | { type: 'reload-key' }
   | { type: 'hide'; minutes: number }
+  | { type: 'show' }
+  | { type: 'say'; text: string }
+  | { type: 'come-here' }
+  | { type: 'reset' }

@@ -101,20 +101,27 @@ function createOverlay() {
   }
 }
 
-function openSettings() {
+let quitting = false
+let lastStatus: unknown = null
+
+/** The Home window: her control centre (status, toggles, focus, goals, chat) plus all settings. */
+function openHome(tab: 'home' | 'settings' = 'home', inactive = false) {
   if (settingsWin && !settingsWin.isDestroyed()) {
     if (settingsWin.isMinimized()) settingsWin.restore()
-    settingsWin.show()
-    settingsWin.moveTop()
-    settingsWin.focus()
+    if (inactive) settingsWin.showInactive()
+    else { settingsWin.show(); settingsWin.moveTop(); settingsWin.focus() }
+    settingsWin.webContents.send('tab', tab)
     return
   }
   settingsWin = new BrowserWindow({
-    width: 520,
-    height: 720,
-    title: 'Manyaki · Settings',
+    width: 940,
+    height: 700,
+    minWidth: 720,
+    minHeight: 520,
+    title: 'Manyaki',
     icon: appIcon(256),
     autoHideMenuBar: true,
+    show: false,
     backgroundColor: '#fff7fb',
     webPreferences: { preload: join(__dirname, '../preload/index.cjs'), sandbox: false, contextIsolation: true }
   })
@@ -123,8 +130,22 @@ function openSettings() {
     return { action: 'deny' }
   })
   load(settingsWin, 'settings')
+  settingsWin.webContents.on('did-finish-load', () => { if (lastStatus) settingsWin?.webContents.send('status', lastStatus) })
+  settingsWin.once('ready-to-show', () => {
+    if (inactive) settingsWin?.showInactive()
+    else settingsWin?.show()
+    settingsWin?.webContents.send('tab', tab)
+    if (lastStatus) settingsWin?.webContents.send('status', lastStatus)
+  })
+  // Closing the window just hides it; she keeps running (quit from the tray or the window's Quit button).
+  settingsWin.on('close', (e) => {
+    if (quitting) return
+    e.preventDefault()
+    settingsWin?.hide()
+  })
   settingsWin.on('closed', () => { settingsWin = null })
 }
+const openSettings = () => openHome('settings')
 
 let iconCache: Electron.NativeImage | null = null
 function appIcon(size: number) {
@@ -142,6 +163,7 @@ function controlMenu(): Menu {
   const s = store.getSettings()
   return Menu.buildFromTemplate([
     { label: 'Manyaki 💗', enabled: false },
+    { label: '🏠 Open Manyaki Home', click: () => openHome('home') },
     { type: 'separator' },
     { label: 'Talk to her  (Ctrl+Alt+Space)', click: () => command({ type: 'toggle-listen' }) },
     { label: 'Type a message…', click: () => command({ type: 'chat' }) },
@@ -163,6 +185,7 @@ function controlMenu(): Menu {
     { type: 'separator' },
     { label: 'Do not disturb', type: 'checkbox', checked: s.dnd, click: (i) => applySettings({ dnd: i.checked }) },
     { label: 'Send her to the corner', click: () => command({ type: 'corner' }) },
+    { label: '🔄 Reset her position', click: () => command({ type: 'reset' }) },
     {
       label: 'Size',
       submenu: [180, 220, 260, 320, 400].map((px) => ({
@@ -186,7 +209,7 @@ function buildTray() {
   if (!tray) {
     tray = new Tray(appIcon(32))
     tray.setToolTip('Manyaki')
-    tray.on('click', () => command({ type: 'say-hi' }))
+    tray.on('click', () => openHome('home'))
   }
   tray.setContextMenu(menu)
 }
@@ -253,6 +276,13 @@ function registerIpc() {
     if (Notification.isSupported()) new Notification({ title, body, icon: appIcon(128), silent: false }).show()
   })
   ipcMain.on('settings:open', openSettings)
+  ipcMain.on('home:open', () => openHome('home'))
+  ipcMain.on('command:send', (_e, cmd: Command) => command(cmd))
+  ipcMain.on('status:report', (_e, st: unknown) => {
+    lastStatus = st
+    if (settingsWin && !settingsWin.isDestroyed()) settingsWin.webContents.send('status', st)
+  })
+  ipcMain.on('app:quit', () => app.quit())
   ipcMain.on('menu:popup', () => { if (overlay) controlMenu().popup({ window: overlay }) })
   ipcMain.on('log', (_e, level: string, msg: string) => log(level, msg))
 }
@@ -280,7 +310,7 @@ function registerAssetProtocol() {
   })
 }
 
-app.on('second-instance', () => command({ type: 'say-hi' }))
+app.on('second-instance', () => openHome('home'))
 
 app.whenReady().then(() => {
   app.setAppUserModelId('com.naman.manyaki')
@@ -321,9 +351,14 @@ app.whenReady().then(() => {
   screen.on('display-added', onDisplay)
   screen.on('display-removed', onDisplay)
 
+  // Home opens on start (quietly, without stealing focus) so her controls are always one click away;
+  // first run goes straight to the key setup.
   if (!store.getSettings().onboarded || !store.getApiKey()) setTimeout(openSettings, 2500)
+  else setTimeout(() => openHome('home', true), 2500)
   log('info', `Manyaki started; data at ${store.storePath()}`)
 })
+
+app.on('before-quit', () => { quitting = true })
 
 app.on('will-quit', () => {
   globalShortcut.unregisterAll()

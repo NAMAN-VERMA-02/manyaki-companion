@@ -1,4 +1,4 @@
-import type { ActivitySnapshot, Bridge, Command, MemoryData, Settings } from '../shared/types'
+import type { ActivitySnapshot, Bridge, Command, MemoryData, Settings, Status } from '../shared/types'
 import type { Stage, ClickZone } from './stage'
 import type { Action } from './core/behavior'
 import type { Emotion } from './core/expressions'
@@ -107,6 +107,7 @@ export class Companion implements ToolHost {
 
     setInterval(() => this.timer.tick(), 1000)
     setInterval(() => this.considerNudge(), 20000)
+    setInterval(() => this.reportStatus(), 1000)
     // If the mic was blocked (Windows privacy switch, device unplugged), keep retrying quietly.
     setInterval(() => { if (this.micError && !this.mic.enabled) void this.syncMic().then(() => { if (this.mic.enabled) { this.micError = ''; this.stage.chip.set('I can hear you now! 👂', '', 3000) } }) }, 15000)
     window.addEventListener('online', () => this.stage.chip.set('back online ✨', '', 2500))
@@ -618,6 +619,23 @@ export class Companion implements ToolHost {
       case 'corner': this.stage.body.goCorner(); break
       case 'say-hi': this.react('happy', 'wave', 'heart'); break
       case 'chat': this.openChat(); break
+      case 'reset':
+        this.hiddenUntil = 0
+        this.audio.stop()
+        this.local.stop()
+        this.stage.setHidden(false)
+        this.stage.body.reset()
+        this.stage.squash.impulse(0.5)
+        this.react('happy', 'wave', 'sparkle')
+        this.stage.bubble.show("I'm back! ✨", { holdMs: 2500 })
+        break
+      case 'show':
+        this.hiddenUntil = 0
+        this.stage.setHidden(!!this.activity?.fullscreen)
+        this.react('happy', 'wave', 'heart')
+        break
+      case 'say': void this.sendTyped(c.text); break
+      case 'come-here': this.stage.body.walkTo(this.stage.display.workArea.width / 2); this.react('happy', 'none', 'heart'); break
       case 'hide':
         this.stage.setHidden(true)
         this.hiddenUntil = Date.now() + c.minutes * 60000
@@ -636,6 +654,32 @@ export class Companion implements ToolHost {
       this.react('pout', 'none', 'sweat')
       this.stage.bubble.show(pick(['Owww… be gentle!', 'Hey! I\'m not a toy~', 'Wahh, dizzy…']), { holdMs: 2500 })
     } else if (Math.random() < 0.3) this.stage.emotes.pop('sparkle')
+  }
+
+  // ---------------- status for the Home window ----------------
+
+  private lastStatusKey = ''
+
+  private reportStatus() {
+    const l = this.live
+    const brain: Status['brain'] = !this.hasKey ? 'no-key' : this.keyRejected || l.state === 'bad-key' ? 'bad-key'
+      : !navigator.onLine ? 'offline' : l.state === 'open' ? 'live' : l.state === 'connecting' ? 'connecting' : l.usable ? 'live' : 'fallback'
+    const a = this.activity
+    const st: Status = {
+      mood: this.stage.body.moodNow,
+      mode: this.stage.body.mode,
+      conv: this.stage.body.conv,
+      brain,
+      mic: this.mic.enabled ? 'on' : this.micError && this.settings.micMode !== 'off' ? 'blocked' : 'off',
+      hidden: Date.now() < this.hiddenUntil || !!a?.fullscreen,
+      timer: this.timer.state ? { ...this.timer.state } : null,
+      activity: a && a.category !== 'self' ? `${a.label} (${a.category})` : '',
+      lastLine: this.memory.turns.filter((t) => t.role === 'her').slice(-1)[0]?.text ?? ''
+    }
+    const key = JSON.stringify(st)
+    if (key === this.lastStatusKey) return
+    this.lastStatusKey = key
+    this.bridge.reportStatus(st)
   }
 
   // ---------------- debug ----------------
