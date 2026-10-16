@@ -37,8 +37,53 @@ On first launch the Settings window opens:
 | Open YouTube during a focus session | teases you after a few minutes, then gets firmer |
 | Work steadily for ~50 min | tells you she's proud of you and suggests water and a stretch |
 | Step away | she naps 💤 and welcomes you back when you return |
+| "Mera Downloads folder khol do" / "open VS Code" / "lofi on youtube" | pulls out her little pink laptop and opens it |
+| "Recursion samjhao" / "how does crosshair placement work?" | teaches step by step with small examples, checks you got it, offers a quick quiz |
+| `Ctrl+Alt+E` or "dekho screen pe ye kya error hai" | looks at your screen **once** and walks you through it (online only) |
+| Launch a game | "GLHF!"; after a long session: "GG — how'd it go?" plus a stretch/water nudge |
 
-The tray icon offers talk, type, mic mode, focus start/stop, do-not-disturb, "send her to the corner", size, settings, launch at login and quit.
+**Manyaki Home** is her control window. It opens on start, or from the tray icon or by right-clicking her, and has:
+
+- live status
+- quick toggles: mic, mute, Do not disturb, Private mode, Stream-safe, hide, reset
+- the focus timer
+- chat with history
+- today's goals
+- all settings
+
+Closing Home only hides it. If she ever gets lost, **🔄 Reset her** puts her back on the taskbar.
+
+## Brain, offline & privacy
+
+| Mode | How it works |
+|---|---|
+| **Auto** (default) | **Gemini Live** when online: natural voice, about 1 s replies, interruptible. When there's no internet, her **offline brain** takes over. |
+| **🔒 Private** | Everything runs on this PC; nothing is sent to Google. |
+
+The **offline brain** is a one-time download of about 2.5 GB, done from Settings → Brain & privacy. It runs in its own background process:
+
+- **Thinking:** Qwen2.5-3B (llama.cpp).
+- **Hearing:** Whisper small, which understands Hindi and Hinglish.
+- **Voice:** Kokoro. She measures its speed and falls back to the instant Windows voice if your CPU can't keep up; Hindi always uses the Windows voice.
+
+Speed on a laptop i3: about 3–5 s per typed reply and about 6–8 s per spoken turn. The first reply after start takes about 30 s while the model loads.
+
+Privacy protections, in every mode:
+
+- **Encrypted memory.** Your name, remembered facts, goals and chat history are encrypted on disk with Windows DPAPI.
+- **Personal details masked.** Before anything goes to Gemini, emails, phone numbers, Aadhaar/PAN, card numbers, keys and passwords, and your user-folder paths are replaced with placeholders. Less chat history is sent on the cloud path than locally.
+- **Prompt-injection guards:**
+  - Window titles, file and folder names, remembered facts and tool results are wrapped and sanitised as *data*.
+  - She opens things only right after **you** asked, never because of an event or something on screen, and at most a few times a minute.
+  - "Facts" that are really instructions are never saved.
+  - Offline, actions come only from fixed rules applied to your own words.
+- **Screenshots only on request.** One screenshot is taken only when you ask, is never saved, and is never taken in Private mode.
+
+## For gamers & streamers
+
+- **Gaming counts as work:** she won't nag you while you play or stream.
+- **🎥 Stream-safe mode:** she never says your name, remembered facts or window titles out loud.
+- **Show her on stream:** in OBS, add a *Window Capture* of "Manyaki" with capture method *Windows 10 (1903 and up)*. Her background stays transparent.
 
 ## Animations (optional, recommended)
 

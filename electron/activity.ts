@@ -27,7 +27,10 @@ export function startActivityWatcher(ownPid: number, onChange: Listener): () => 
         snap = { app: 'manyaki', title: '', category: 'self', label: 'me', bounds: null, maximized: false, fullscreen: false, idleSeconds }
       } else {
         const app = w.owner.name || w.owner.path?.split(/[\\/]/).pop() || ''
-        const { category, label } = classify(app, w.title, settings.categoryRules)
+        const c = classify(app, w.title, settings.categoryRules)
+        const isGame = /\b(valorant|league of legends|minecraft|fortnite|apex|counter-?strike|cs2|dota|genshin|roblox|overwatch|gta|elden ring|pubg|rocket league|steam|epic games|riot client|osu|call of duty|warzone)\b/i.test(`${app} ${w.title}`)
+        const category = isGame && settings.gamingIsWork ? 'work' : c.category
+        const label = c.label
         // get-windows reports physical pixels; Electron's displays are in DIPs. Without this, a maximized
         // window on a 125% display looks "fullscreen" and she hides, and perches land in the wrong place.
         const b = process.platform === 'win32' ? screen.screenToDipRect(null, w.bounds) : w.bounds

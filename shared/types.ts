@@ -34,6 +34,10 @@ export interface Settings {
   launchAtLogin: boolean
   /** auto: Gemini when online, local brain when offline. private: always local, nothing leaves the PC. */
   brainMode: 'auto' | 'private'
+  /** Live streaming: she never says their name, facts or window titles out loud. */
+  streamSafe: boolean
+  /** Games count as work (streamers / pro players), so she doesn't nag during gaming. */
+  gamingIsWork: boolean
   voiceMuted: boolean            // she replies in the bubble only, no audio
   checkInMinutes: number
   focusMinutes: number
@@ -67,6 +71,8 @@ export const DEFAULT_SETTINGS: Settings = {
   shareTitles: false,
   launchAtLogin: true,
   brainMode: 'auto',
+  streamSafe: false,
+  gamingIsWork: false,
   voiceMuted: false,
   checkInMinutes: 12,
   focusMinutes: 25,
@@ -119,12 +125,14 @@ export interface Bridge {
   /** Open the Home control window. */
   openHome(): void
   quit(): void
+  /** One JPEG (base64) of the primary screen; only called when the user asks her to look. */
+  captureScreen(): Promise<string | null>
   /** Offline brain (runs on this PC). */
   local: {
     status(): Promise<LocalStatus | null>
     download(): Promise<LocalStatus>
     warm(system?: string): Promise<LocalStatus | null>
-    chat(system: string, history: { role: 'user' | 'her'; text: string }[], text: string): Promise<LocalReply>
+    chat(system: string, history: { role: 'user' | 'her'; text: string }[], text: string, teach?: boolean): Promise<LocalReply>
     transcribe(audio: Float32Array): Promise<{ text: string; ms: number }>
     tts(text: string, voice: string): Promise<{ samples: Float32Array; rate: number; ms: number }>
   }
@@ -186,3 +194,4 @@ export type Command =
   | { type: 'say'; text: string }
   | { type: 'come-here' }
   | { type: 'reset' }
+  | { type: 'look'; question?: string }

@@ -13,7 +13,7 @@ type In =
   | { id: number; type: 'status' }
   | { id: number; type: 'download' }
   | { id: number; type: 'warm'; system?: string }
-  | { id: number; type: 'chat'; system: string; history: { role: 'user' | 'her'; text: string }[]; text: string }
+  | { id: number; type: 'chat'; system: string; history: { role: 'user' | 'her'; text: string }[]; text: string; teach?: boolean }
   | { id: number; type: 'transcribe'; audio: Float32Array }
   | { id: number; type: 'tts'; text: string; voice: string }
 
@@ -223,7 +223,7 @@ async function preparePersona(system: string) {
   if (s.getChatHistory().length <= 1) await s.preloadPrompt('')
 }
 
-async function chat(system: string, _history: { role: 'user' | 'her'; text: string }[], text: string) {
+async function chat(system: string, _history: { role: 'user' | 'her'; text: string }[], text: string, teach = false) {
   let s = await getSession(system)
   // Keep the context small: start fresh (persona re-read once) when the conversation grows long.
   if (session && session.seq.nextTokenIndex > 3000) {
@@ -232,7 +232,9 @@ async function chat(system: string, _history: { role: 'user' | 'her'; text: stri
     s = await getSession(system)
   }
   const t0 = Date.now()
-  const raw = await s.prompt(text, { maxTokens: 70, temperature: 0.8, topP: 0.9, repeatPenalty: { penalty: 1.1 } })
+  // Teaching gets room for a real explanation (still short enough to listen to comfortably).
+  const prompt = teach ? `${text}\n(Teach it: explain simply in 3-5 short sentences with one tiny example, then ask if it made sense.)` : text
+  const raw = await s.prompt(prompt, { maxTokens: teach ? 220 : 70, temperature: teach ? 0.6 : 0.8, topP: 0.9, repeatPenalty: { penalty: 1.1 } })
   const say = raw.replace(/^["'\s]+|["'\s]+$/g, '').replace(/\*[^*]{1,30}\*/g, '').replace(/\s+/g, ' ').trim()
   return { say, ms: Date.now() - t0 }
 }
@@ -273,7 +275,7 @@ port.on('message', async ({ data: msg }) => {
         result = status
         break
       }
-      case 'chat': result = await chat(msg.system, msg.history, msg.text); break
+      case 'chat': result = await chat(msg.system, msg.history, msg.text, msg.teach); break
       case 'transcribe': result = await transcribe(msg.audio); break
       case 'tts': result = await speak(msg.text, msg.voice); break
     }

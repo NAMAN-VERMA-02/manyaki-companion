@@ -48,7 +48,14 @@
     },
     "files": [
       "out/**",
-      "package.json"
+      "package.json",
+      "!node_modules/@node-llama-cpp/*cuda*/**",
+      "!node_modules/@node-llama-cpp/*arm64*/**",
+      "!node_modules/@node-llama-cpp/*linux*/**",
+      "!node_modules/@node-llama-cpp/*mac*/**",
+      "!node_modules/onnxruntime-node/bin/napi-v*/linux/**",
+      "!node_modules/onnxruntime-node/bin/napi-v*/darwin/**",
+      "!node_modules/node-llama-cpp/llama/**"
     ],
     "extraResources": [
       {
@@ -60,7 +67,12 @@
       }
     ],
     "asarUnpack": [
-      "node_modules/get-windows/**"
+      "node_modules/get-windows/**",
+      "node_modules/node-llama-cpp/**",
+      "node_modules/@node-llama-cpp/**",
+      "node_modules/onnxruntime-node/**",
+      "node_modules/sharp/**",
+      "node_modules/@img/**"
     ],
     "win": {
       "target": [

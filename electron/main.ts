@@ -1,5 +1,5 @@
 import { fork, type ChildProcess } from 'node:child_process'
-import { app, BrowserWindow, dialog, globalShortcut, ipcMain, Menu, nativeImage, net, Notification, protocol, screen, session, shell, Tray } from 'electron'
+import { app, desktopCapturer, BrowserWindow, dialog, globalShortcut, ipcMain, Menu, nativeImage, net, Notification, protocol, screen, session, shell, Tray } from 'electron'
 import { appendFileSync, existsSync, mkdirSync, readdirSync, writeFileSync } from 'node:fs'
 import { join } from 'node:path'
 import { pathToFileURL } from 'node:url'
@@ -217,6 +217,7 @@ function controlMenu(): Menu {
     { type: 'separator' },
     { label: 'Talk to her  (Ctrl+Alt+Space)', click: () => command({ type: 'toggle-listen' }) },
     { label: 'Type a message…', click: () => command({ type: 'chat' }) },
+    { label: '👀 Look at my screen  (Ctrl+Alt+E)', click: () => command({ type: 'look' }) },
     {
       label: 'Microphone',
       submenu: (['handsfree', 'toggle', 'off'] as const).map((m) => ({
@@ -234,6 +235,7 @@ function controlMenu(): Menu {
     { label: 'Stop focus', click: () => command({ type: 'focus-stop' }) },
     { type: 'separator' },
     { label: 'Do not disturb', type: 'checkbox', checked: s.dnd, click: (i) => applySettings({ dnd: i.checked }) },
+    { label: '🎥 Stream-safe mode', type: 'checkbox', checked: s.streamSafe, click: (i) => applySettings({ streamSafe: i.checked }) },
     { label: 'Send her to the corner', click: () => command({ type: 'corner' }) },
     { label: '🔄 Reset her position', click: () => command({ type: 'reset' }) },
     {
@@ -317,10 +319,24 @@ function registerIpc() {
     return res.filePath
   })
   ipcMain.handle('anims:list', () => listAnims())
+  // One screenshot of the primary display, only when the user asks her to look. Never written to disk.
+  ipcMain.handle('screen:capture', async () => {
+    const d = screen.getPrimaryDisplay()
+    const scale = Math.min(1, 1280 / d.size.width)
+    overlay?.setOpacity(0) // keep herself out of the picture
+    try {
+      await new Promise((r) => setTimeout(r, 120))
+      const sources = await desktopCapturer.getSources({ types: ['screen'], thumbnailSize: { width: Math.round(d.size.width * scale), height: Math.round(d.size.height * scale) } })
+      const src = sources.find((s) => s.display_id === String(d.id)) ?? sources[0]
+      return src ? src.thumbnail.toJPEG(72).toString('base64') : null
+    } finally {
+      overlay?.setOpacity(1)
+    }
+  })
   ipcMain.handle('local:status', () => askBrain({ type: 'status' }, 10000).catch(() => brainStatus))
   ipcMain.handle('local:download', () => askBrain({ type: 'download' }, 6 * 3600000))
   ipcMain.handle('local:warm', (_e, system?: string) => askBrain({ type: 'warm', system }, 300000).catch(() => brainStatus))
-  ipcMain.handle('local:chat', (_e, system: string, history: unknown, text: string) => askBrain({ type: 'chat', system, history, text }, 90000))
+  ipcMain.handle('local:chat', (_e, system: string, history: unknown, text: string, teach?: boolean) => askBrain({ type: 'chat', system, history, text, teach }, 120000))
   ipcMain.handle('local:transcribe', (_e, audio: Float32Array) => askBrain({ type: 'transcribe', audio }, 60000))
   ipcMain.handle('local:tts', (_e, text: string, voice: string) => askBrain({ type: 'tts', text, voice }, 60000))
   ipcMain.handle('action:run', async (_e, kind: ActionKind, target: string) => {
@@ -383,6 +399,7 @@ app.whenReady().then(() => {
   if (app.isPackaged) app.setLoginItemSettings({ openAtLogin: store.getSettings().launchAtLogin })
 
   globalShortcut.register('Control+Alt+Space', () => command({ type: 'toggle-listen' }))
+  globalShortcut.register('Control+Alt+E', () => command({ type: 'look' }))
 
   // Her eyes follow the cursor anywhere on screen, not only over her small window.
   let lastCursor = ''

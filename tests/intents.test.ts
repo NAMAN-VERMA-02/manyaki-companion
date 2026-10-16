@@ -36,3 +36,21 @@ describe('moodFromReply', () => {
     expect(moodFromReply('Imagine a story that repeats itself.', null).action).toBe('think')
   })
 })
+
+describe('teach / screen / game detection', async () => {
+  const { isTeachRequest, isScreenRequest, GAME_RE } = await import('../shared/intents')
+  it('recognises teaching requests', () => {
+    expect(isTeachRequest('Recursion samajh nahi aa raha, samjhao na')).toBe(true)
+    expect(isTeachRequest('how does crosshair placement work in valorant')).toBe(true)
+    expect(isTeachRequest('lol nice')).toBe(false)
+  })
+  it('recognises screen requests', () => {
+    expect(isScreenRequest('dekho screen pe ye kya error hai')).toBe(true)
+    expect(isScreenRequest("what's on my screen?")).toBe(true)
+    expect(isScreenRequest('open youtube')).toBe(false)
+  })
+  it('spots games', () => {
+    expect(GAME_RE.test('VALORANT')).toBe(true)
+    expect(GAME_RE.test('Visual Studio Code')).toBe(false)
+  })
+})

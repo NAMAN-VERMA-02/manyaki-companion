@@ -112,7 +112,8 @@ describe('tools', () => {
     completeGoal: (w) => `done ${w}`,
     remember: (f) => `rem ${f}`,
     setUserName: (n) => `name ${n}`,
-    openThing: async (k, t) => `${k} ${t}`
+    openThing: async (k, t) => `${k} ${t}`,
+    lookAtScreen: async (q) => `looked: ${q}`
   }
   it('validates arguments and never throws', async () => {
     expect(await runTool(host, 'react', { emotion: 'nope', action: 'dance', emote: 'heart' })).toEqual({ ok: true })

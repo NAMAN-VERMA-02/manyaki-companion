@@ -29,6 +29,8 @@ function fill(s: Settings) {
   $<HTMLInputElement>('dnd').checked = s.dnd
   $<HTMLInputElement>('muted').checked = s.voiceMuted
   for (const r of document.querySelectorAll<HTMLInputElement>('input[name=brain]')) r.checked = r.value === s.brainMode
+  $<HTMLInputElement>('gamingwork').checked = s.gamingIsWork
+  $<HTMLInputElement>('streamsafe').checked = s.streamSafe
   $<HTMLInputElement>('titles').checked = s.shareTitles
   $<HTMLTextAreaElement>('work').value = s.categoryRules.work.join(', ')
   $<HTMLTextAreaElement>('distraction').value = s.categoryRules.distraction.join(', ')
@@ -106,6 +108,8 @@ async function init() {
   $<HTMLInputElement>('dnd').onchange = (e) => save({ dnd: (e.target as HTMLInputElement).checked })
   $<HTMLInputElement>('muted').onchange = (e) => save({ voiceMuted: (e.target as HTMLInputElement).checked })
   for (const r of document.querySelectorAll<HTMLInputElement>('input[name=brain]')) r.onchange = () => save({ brainMode: r.value as Settings['brainMode'] })
+  $<HTMLInputElement>('gamingwork').onchange = (e) => save({ gamingIsWork: (e.target as HTMLInputElement).checked })
+  $<HTMLInputElement>('streamsafe').onchange = (e) => save({ streamSafe: (e.target as HTMLInputElement).checked })
   const renderLocal = (st: LocalStatus | null) => {
     const el = $('local-state')
     const btn = $<HTMLButtonElement>('local-download')

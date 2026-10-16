@@ -66,6 +66,10 @@ function renderSettings() {
   $('q-dnd').classList.toggle('on', s.dnd)
   $('q-dnd').textContent = s.dnd ? '🌙 Do not disturb: on' : '🌙 Do not disturb'
   $('chip-voice').textContent = s.voiceMuted ? '🔇 voice muted' : '🔊 voice on'
+  $('q-stream').classList.toggle('on', s.streamSafe)
+  $('q-stream').textContent = s.streamSafe ? '🎥 Stream-safe: on' : '🎥 Stream-safe'
+  $('q-private').classList.toggle('on', s.brainMode === 'private')
+  $('q-private').textContent = s.brainMode === 'private' ? '🔒 Private: on' : '🔒 Private mode'
   if (document.activeElement !== $('focus-min')) $<HTMLInputElement>('focus-min').value = String(s.focusMinutes)
 }
 
@@ -152,6 +156,9 @@ export async function initHome() {
   $('q-corner').onclick = () => bridge.sendCommand({ type: 'corner' })
   $('q-hi').onclick = () => bridge.sendCommand({ type: 'say-hi' })
   $('q-reset').onclick = () => bridge.sendCommand({ type: 'reset' })
+  $('q-look').onclick = () => bridge.sendCommand({ type: 'look' })
+  $('q-stream').onclick = () => void save({ streamSafe: !settings?.streamSafe })
+  $('q-private').onclick = () => void save({ brainMode: settings?.brainMode === 'private' ? 'auto' : 'private' })
   $('focus-start').onclick = () => {
     const m = Math.max(1, Math.min(120, Math.round(Number($<HTMLInputElement>('focus-min').value) || 25)))
     bridge.sendCommand({ type: 'focus-start', minutes: m })

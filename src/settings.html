@@ -50,6 +50,9 @@
             <button id="q-corner">↘️ Go to corner</button>
             <button id="q-hi">👋 Say hi</button>
             <button id="q-reset" class="primary">🔄 Reset her</button>
+            <button id="q-look">👀 Look at my screen</button>
+            <button class="toggle" id="q-stream">🎥 Stream-safe</button>
+            <button class="toggle" id="q-private">🔒 Private mode</button>
             <label>Size
               <select id="q-size">
                 <option value="180">Tiny</option><option value="220">Small</option><option value="260">Medium</option>
@@ -158,6 +161,13 @@
         <p class="hint">Qwen2.5-3B (thinking) · Whisper small (hearing, handles Hindi) · Kokoro (voice). Downloaded once from Hugging Face, then works with no internet.</p>
       </div>
       <p class="hint">Either way: her memory is encrypted on this PC, personal details (phone, email, ID/card numbers, keys, your folder paths) are masked before anything goes to Gemini, and text from windows/files is treated as data — it can't make her open things.</p>
+    </section>
+
+    <section>
+      <h2>🎮 Gamers & streamers</h2>
+      <label class="check"><input id="gamingwork" type="checkbox" /> Gaming counts as work (I stream / play seriously) — she won't nag you during games</label>
+      <label class="check"><input id="streamsafe" type="checkbox" /> 🎥 Stream-safe mode — she never says your name, remembered facts or window titles out loud</label>
+      <p class="hint">To show her on stream in OBS: add a <b>Window Capture</b> of "Manyaki" with capture method "Windows 10 (1903 and up)"; her background stays transparent.</p>
     </section>
 
     <section>

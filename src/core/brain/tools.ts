@@ -16,6 +16,8 @@ export interface ToolHost {
   setUserName(name: string): string
   /** Opens something on the computer, with her little laptop animation. Resolves with what happened. */
   openThing(kind: 'folder' | 'app' | 'website', target: string): Promise<string>
+  /** Takes one screenshot (only right after the user asked) and returns what is on it. */
+  lookAtScreen(question: string): Promise<string>
 }
 
 export const NON_BLOCKING = new Set(['react'])
@@ -74,6 +76,11 @@ export function toolDeclarations(live: boolean): FunctionDeclaration[] {
       parameters: { type: Type.OBJECT, properties: { target: { type: Type.STRING } }, required: ['target'] }
     },
     {
+      name: 'look_at_screen',
+      description: 'Take ONE screenshot of their screen to see what they are asking about (an error, code, a game, a page). Only when they ask you to look/see/check something on their screen.',
+      parameters: { type: Type.OBJECT, properties: { question: { type: Type.STRING, description: 'what they want to know about it' } }, required: ['question'] }
+    },
+    {
       name: 'set_user_name',
       description: 'Save what they want to be called.',
       parameters: { type: Type.OBJECT, properties: { name: { type: Type.STRING } }, required: ['name'] }
@@ -104,6 +111,7 @@ export async function runTool(host: ToolHost, name: string, args: Record<string,
       case 'open_folder': return { result: await host.openThing('folder', String(args.name ?? '')) }
       case 'open_app': return { result: await host.openThing('app', String(args.name ?? '')) }
       case 'open_website': return { result: await host.openThing('website', String(args.target ?? '')) }
+      case 'look_at_screen': return { result: await host.lookAtScreen(String(args.question ?? '')) }
       default: return { error: `unknown tool ${name}` }
     }
   } catch (err) {

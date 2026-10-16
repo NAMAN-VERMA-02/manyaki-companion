@@ -86,3 +86,16 @@ export function moodFromReply(say: string, intent: Intent | null): Mood {
   if (/\b(break|rest|water|stretch|sleep)/.test(s)) return { emotion: 'relaxed', action: 'stretch', emote: 'coffee' }
   return { emotion: 'happy', action: 'nod', emote: null }
 }
+
+/** "explain/teach me/samjhao/how does…": she switches to step-by-step teaching. */
+export function isTeachRequest(t: string): boolean {
+  return /\b(explain|teach|tutor|walk me through|how (does|do|to)|what (is|are|does)|why (is|does|do)|help me understand|i don'?t (get|understand)|quiz me|samjha|samjhao|samjha do|samajh nahi|samjh nahi|sikha|sikhao|kya hota|kaise (karte|hota|kaam)|matlab kya)\b/i.test(t)
+}
+
+/** "look at my screen / ye kya hai screen pe / what's this error": take one screenshot (cloud only). */
+export function isScreenRequest(t: string): boolean {
+  return /\b(look at|see|check|dekh|dekho|dekhna)\b.*\b(screen|this|ye|yeh|error)\b|\b(screen pe|screen par|on my screen)\b|\bwhat'?s (this|on my screen)\b|\bye kya hai\b/i.test(t)
+}
+
+/** Common PC games and launchers (used for GLHF/GG moments and the "gaming counts as work" option). */
+export const GAME_RE = /\b(valorant|league of legends|minecraft|fortnite|apex|counter-?strike|cs2|dota|genshin|roblox|overwatch|gta|elden ring|pubg|bgmi|free fire|rocket league|steam|epic games|riot client|battle\.net|osu|among us|call of duty|warzone)\b/i
