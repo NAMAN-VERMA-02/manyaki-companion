@@ -76,8 +76,9 @@ async function init() {
     const input = $<HTMLInputElement>('key')
     const v = input.value.trim()
     if (!v) return
-    if (!/^[A-Za-z0-9_-]{20,}$/.test(v)) {
-      $('key-status').textContent = "That doesn't look like a Gemini key (it usually starts with \"AIza\")."
+    // Key formats change over time; only reject things that clearly aren't a key (spaces, too short).
+    if (v.length < 20 || /\s/.test(v)) {
+      $('key-status').textContent = "That doesn't look like a complete Gemini key — copy it again from AI Studio."
       return
     }
     const ok = await bridge.setApiKey(v)
