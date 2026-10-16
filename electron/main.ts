@@ -1,3 +1,4 @@
+import { fork, type ChildProcess } from 'node:child_process'
 import { app, BrowserWindow, dialog, globalShortcut, ipcMain, Menu, nativeImage, net, Notification, protocol, screen, session, shell, Tray } from 'electron'
 import { appendFileSync, existsSync, mkdirSync, readdirSync, writeFileSync } from 'node:fs'
 import { join } from 'node:path'
@@ -6,6 +7,55 @@ import type { Command, DisplayInfo, Settings } from '../shared/types'
 import { startActivityWatcher } from './activity'
 import * as store from './store'
 import { runAction, type ActionKind } from './actions'
+
+// ---------- offline brain (utility process) ----------
+let brain: ChildProcess | null = null
+let brainSeq = 0
+const brainPending = new Map<number, { resolve: (v: unknown) => void; reject: (e: Error) => void }>()
+let brainStatus: unknown = null
+
+function startBrain() {
+  if (brain) return brain
+  // A normal child process running Electron's bundled Node (no separate Node install needed).
+  brain = fork(join(__dirname, 'localbrain.js'), [], {
+    execPath: process.execPath,
+    env: { ...process.env, ELECTRON_RUN_AS_NODE: '1', MANYAKI_MODELS_DIR: join(app.getPath('userData'), 'models') },
+    stdio: ['ignore', 'ignore', 'pipe', 'ipc'],
+    serialization: 'advanced', // typed arrays (audio) cross the boundary without JSON copies
+    windowsHide: true
+  })
+  brain.stderr?.on('data', (d) => log('warn', `brain: ${String(d).trim().slice(0, 300)}`))
+  brain.on('message', (raw) => {
+    const m = raw as { id?: number; ok?: boolean; result?: unknown; error?: string; type?: string; status?: unknown }
+    if (m.type === 'status') {
+      brainStatus = m.status
+      send('local-status', m.status)
+      return
+    }
+    const p = m.id != null ? brainPending.get(m.id) : undefined
+    if (!p) return
+    brainPending.delete(m.id!)
+    if (m.ok) p.resolve(m.result)
+    else p.reject(new Error(m.error ?? 'local brain error'))
+  })
+  brain.on('exit', (code) => {
+    log('warn', `local brain exited (${code})`)
+    brain = null
+    for (const p of brainPending.values()) p.reject(new Error('local brain stopped'))
+    brainPending.clear()
+  })
+  return brain
+}
+
+function askBrain(msg: Record<string, unknown>, timeoutMs = 120000): Promise<unknown> {
+  const b = startBrain()
+  const id = ++brainSeq
+  return new Promise((resolve, reject) => {
+    brainPending.set(id, { resolve, reject })
+    b.send({ ...msg, id })
+    setTimeout(() => { if (brainPending.delete(id)) reject(new Error('local brain timed out')) }, timeoutMs)
+  })
+}
 
 const DEBUG = process.argv.includes('--manyaki-debug') || !!process.env.MANYAKI_DEBUG
 const ASSET_SCHEME = 'manyaki-asset'
@@ -267,6 +317,12 @@ function registerIpc() {
     return res.filePath
   })
   ipcMain.handle('anims:list', () => listAnims())
+  ipcMain.handle('local:status', () => askBrain({ type: 'status' }, 10000).catch(() => brainStatus))
+  ipcMain.handle('local:download', () => askBrain({ type: 'download' }, 6 * 3600000))
+  ipcMain.handle('local:warm', (_e, system?: string) => askBrain({ type: 'warm', system }, 300000).catch(() => brainStatus))
+  ipcMain.handle('local:chat', (_e, system: string, history: unknown, text: string) => askBrain({ type: 'chat', system, history, text }, 90000))
+  ipcMain.handle('local:transcribe', (_e, audio: Float32Array) => askBrain({ type: 'transcribe', audio }, 60000))
+  ipcMain.handle('local:tts', (_e, text: string, voice: string) => askBrain({ type: 'tts', text, voice }, 60000))
   ipcMain.handle('action:run', async (_e, kind: ActionKind, target: string) => {
     const r = await runAction(kind, target)
     log('info', `action ${kind} "${String(target).slice(0, 60)}" -> ${r.ok ? 'opened' : r.error}`)
@@ -358,7 +414,7 @@ app.whenReady().then(() => {
   log('info', `Manyaki started; data at ${store.storePath()}`)
 })
 
-app.on('before-quit', () => { quitting = true })
+app.on('before-quit', () => { quitting = true; brain?.kill() })
 
 app.on('will-quit', () => {
   globalShortcut.unregisterAll()

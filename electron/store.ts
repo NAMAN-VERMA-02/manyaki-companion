@@ -4,13 +4,16 @@ import { DEFAULT_SETTINGS, EMPTY_MEMORY, type MemoryData, type Settings } from '
 
 interface Schema {
   settings: Settings
-  memory: MemoryData
+  /** Legacy plain-text memory; migrated into memoryEnc on first read. */
+  memory: MemoryData | null
+  /** Memory (name, facts, goals, chat history) encrypted with Windows DPAPI via safeStorage. */
+  memoryEnc: string
   apiKeyEnc: string
 }
 
 const store = new Store<Schema>({
   name: 'manyaki',
-  defaults: { settings: DEFAULT_SETTINGS, memory: EMPTY_MEMORY, apiKeyEnc: '' }
+  defaults: { settings: DEFAULT_SETTINGS, memory: null, memoryEnc: '', apiKeyEnc: '' }
 })
 
 export function getSettings(): Settings {
@@ -25,16 +28,40 @@ export function setSettings(patch: Partial<Settings>): Settings {
   return next
 }
 
+let memoryCache: MemoryData | null = null
+
 export function getMemory(): MemoryData {
-  return migrateMemory(store.get('memory'))
+  if (memoryCache) return structuredClone(memoryCache)
+  let m: MemoryData | null = null
+  const enc = store.get('memoryEnc')
+  if (enc && safeStorage.isEncryptionAvailable()) {
+    try { m = JSON.parse(safeStorage.decryptString(Buffer.from(enc, 'base64'))) } catch { m = null }
+  }
+  if (!m) {
+    // First run after the upgrade: move the old plain-text memory into encrypted storage.
+    const legacy = store.get('memory')
+    m = migrateMemory(legacy ?? undefined)
+    if (legacy) { writeMemory(m); store.set('memory', null) }
+  }
+  memoryCache = migrateMemory(m)
+  return structuredClone(memoryCache)
+}
+
+function writeMemory(m: MemoryData) {
+  if (safeStorage.isEncryptionAvailable()) {
+    store.set('memoryEnc', safeStorage.encryptString(JSON.stringify(m)).toString('base64'))
+    store.set('memory', null)
+  } else store.set('memory', m) // no OS keychain available: fall back to plain storage
 }
 
 export function setMemory(m: MemoryData): void {
-  store.set('memory', migrateMemory(m))
+  memoryCache = migrateMemory(m)
+  writeMemory(memoryCache)
 }
 
 export function wipeMemory(): void {
-  store.set('memory', EMPTY_MEMORY)
+  memoryCache = structuredClone(EMPTY_MEMORY)
+  writeMemory(memoryCache)
 }
 
 export function migrateMemory(m: Partial<MemoryData> | undefined): MemoryData {

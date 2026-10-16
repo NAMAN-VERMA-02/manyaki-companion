@@ -4,7 +4,7 @@ import { defineConfig } from 'electron-vite'
 export default defineConfig({
   main: {
     build: {
-      rollupOptions: { input: { index: resolve(__dirname, 'electron/main.ts') } }
+      rollupOptions: { input: { index: resolve(__dirname, 'electron/main.ts'), localbrain: resolve(__dirname, 'electron/localbrain.ts') } }
     }
   },
   preload: {

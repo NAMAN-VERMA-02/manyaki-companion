@@ -1,46 +1,26 @@
 import type { AudioOut } from './audioOut'
 
-export type CloudTts = (text: string) => Promise<{ samples: Float32Array; rate: number } | null>
+export type Synth = (text: string) => Promise<{ samples: Float32Array; rate: number; ms?: number } | null>
 
 /**
- * Speech when Gemini Live is unavailable, sentence by sentence, best option first:
- *   1. Gemini TTS (same voice as Live, ~1 s) when online with a key,
- *   2. Kokoro, a local neural voice, only if the user opted in (it needs a capable GPU to be quick),
- *   3. Windows' built-in voice, instant and always available.
+ * Speech when Gemini Live is not speaking, sentence by sentence, best option first:
+ *   1. Gemini TTS (same voice as Live) — only when online and cloud use is allowed,
+ *   2. Kokoro in the local brain — only while it keeps up with real time on this PC (measured),
+ *   3. Windows' built-in voice — instant, always available, and used for Hindi (Kokoro is English-only).
  */
 export class LocalVoice {
-  private worker: Worker | null = null
-  private ready = false
-  progress = 0
-  private nextId = 1
-  private pending = new Map<number, (r: { samples: Float32Array; rate: number } | null) => void>()
   private queue: Promise<void> = Promise.resolve()
   private generation = 0
   lastMs = 0
-  voice = 'af_heart'
-  onProgress?: (p: number) => void
-  onReady?: () => void
-  /** Set by the companion when a Gemini key is available and we are online. */
-  cloud: CloudTts | null = null
+  /** Set by the companion; returns null when cloud use isn't allowed right now. */
+  cloud: Synth | null = null
+  /** Local Kokoro via the offline brain process. */
+  localTts: Synth | null = null
+  /** Kokoro too slow on this machine (synthesis slower than playback): skip it. */
+  kokoroSlow = false
+  private kokoroCalls = 0
 
   constructor(private readonly out: AudioOut, private readonly log: (m: string) => void) {}
-
-  get isReady() { return this.ready }
-
-  /** Start downloading the model in the background. Safe to call repeatedly. */
-  warmUp(device?: 'wasm' | 'webgpu') {
-    if (this.worker) return
-    this.worker = new Worker(new URL('./kokoro.worker.ts', import.meta.url), { type: 'module' })
-    this.worker.onmessage = (e) => {
-      const m = e.data
-      if (m.type === 'progress') { this.progress = m.value; this.onProgress?.(m.value) }
-      else if (m.type === 'ready') { this.ready = true; this.onReady?.() }
-      else if (m.type === 'audio') { this.lastMs = m.ms; this.pending.get(m.id)?.({ samples: m.samples, rate: m.rate }); this.pending.delete(m.id) }
-      else if (m.type === 'error') { this.log(`kokoro: ${m.message}`); this.pending.get(m.id)?.(null); this.pending.delete(m.id) }
-    }
-    this.worker.onerror = (e) => this.log(`kokoro worker: ${e.message}`)
-    this.worker.postMessage({ type: 'load', device })
-  }
 
   /** Speak text; sentences are synthesised ahead while earlier ones play. */
   speak(text: string) {
@@ -72,16 +52,18 @@ export class LocalVoice {
       const r = await this.cloud(text).catch((err: Error) => { this.log(`cloud tts: ${err.message}`); return null })
       if (r) return r
     }
-    return this.kokoro(text)
-  }
-
-  private kokoro(text: string): Promise<{ samples: Float32Array; rate: number } | null> {
-    if (!this.ready || !this.worker) return Promise.resolve(null)
-    const id = this.nextId++
-    return new Promise((resolve) => {
-      this.pending.set(id, resolve)
-      this.worker!.postMessage({ type: 'speak', id, text, voice: this.voice, speed: 1.05 })
-    })
+    if (!this.localTts || this.kokoroSlow || /[ऀ-ॿ]/.test(text)) return null
+    const r = await this.localTts(text).catch((err: Error) => { this.log(`local tts: ${err.message}`); return null })
+    if (r?.ms != null) {
+      this.lastMs = r.ms
+      const audioMs = (r.samples.length / r.rate) * 1000
+      // The first call includes loading the model; judge speed from the second call on.
+      if (++this.kokoroCalls >= 2 && r.ms > audioMs * 0.9) {
+        this.kokoroSlow = true
+        this.log(`kokoro too slow here (${Math.round(r.ms)} ms for ${Math.round(audioMs)} ms of speech); using the Windows voice offline`)
+      }
+    }
+    return r
   }
 
   /** Windows' built-in voice: instant but robotic; lip-sync is driven by a fake envelope. */

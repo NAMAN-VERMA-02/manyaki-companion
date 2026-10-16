@@ -32,8 +32,9 @@ export interface Settings {
   dnd: boolean
   shareTitles: boolean           // send full window titles to the model (off by default)
   launchAtLogin: boolean
+  /** auto: Gemini when online, local brain when offline. private: always local, nothing leaves the PC. */
+  brainMode: 'auto' | 'private'
   voiceMuted: boolean            // she replies in the bubble only, no audio
-  neuralVoice: boolean           // opt-in local Kokoro voice for offline use (needs a decent GPU)
   checkInMinutes: number
   focusMinutes: number
   breakMinutes: number
@@ -65,8 +66,8 @@ export const DEFAULT_SETTINGS: Settings = {
   dnd: false,
   shareTitles: false,
   launchAtLogin: true,
+  brainMode: 'auto',
   voiceMuted: false,
-  neuralVoice: false,
   checkInMinutes: 12,
   focusMinutes: 25,
   breakMinutes: 5,
@@ -94,6 +95,8 @@ export const EMPTY_MEMORY: MemoryData = {
 // The surface the preload script exposes on window.manyaki.
 export interface Bridge {
   platform: string
+  /** User profile folder, used to mask personal paths before anything leaves the PC. */
+  homeDir: string
   debug: boolean
   getDisplay(): Promise<DisplayInfo>
   /** true: the window is a small rect that follows her (normal); false: it covers the display (debug). */
@@ -116,6 +119,15 @@ export interface Bridge {
   /** Open the Home control window. */
   openHome(): void
   quit(): void
+  /** Offline brain (runs on this PC). */
+  local: {
+    status(): Promise<LocalStatus | null>
+    download(): Promise<LocalStatus>
+    warm(system?: string): Promise<LocalStatus | null>
+    chat(system: string, history: { role: 'user' | 'her'; text: string }[], text: string): Promise<LocalReply>
+    transcribe(audio: Float32Array): Promise<{ text: string; ms: number }>
+    tts(text: string, voice: string): Promise<{ samples: Float32Array; rate: number; ms: number }>
+  }
   /** Send a command to her (from the Home window). */
   sendCommand(cmd: Command): void
   /** Overlay -> Home window status updates. */
@@ -134,14 +146,26 @@ export interface Bridge {
   on(channel: 'cursor', cb: (p: { x: number; y: number }) => void): () => void
   on(channel: 'status', cb: (s: Status) => void): () => void
   on(channel: 'tab', cb: (tab: string) => void): () => void
+  on(channel: 'local-status', cb: (s: LocalStatus) => void): () => void
 }
+
+export interface LocalStatus {
+  llm: 'missing' | 'downloading' | 'ready' | 'loaded'
+  asr: 'missing' | 'downloading' | 'ready' | 'loaded'
+  tts: 'missing' | 'downloading' | 'ready' | 'loaded'
+  progress: number
+  gpu: string
+  error: string
+}
+
+export interface LocalReply { say: string; ms: number }
 
 /** What she is doing right now, reported by the overlay to the Home window about once a second. */
 export interface Status {
   mood: string
   mode: string                 // stand | walk | sit | sleep | act | ...
   conv: string                 // none | listening | thinking | talking
-  brain: 'live' | 'connecting' | 'fallback' | 'no-key' | 'bad-key' | 'offline'
+  brain: 'live' | 'connecting' | 'fallback' | 'local' | 'no-key' | 'bad-key' | 'offline'
   mic: 'on' | 'off' | 'blocked'
   hidden: boolean
   timer: { kind: 'focus' | 'break'; endsAt: number; minutes: number } | null

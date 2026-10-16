@@ -1,5 +1,5 @@
 import { initHome } from './home'
-import type { Bridge, MemoryData, Settings } from '../../shared/types'
+import type { Bridge, LocalStatus, MemoryData, Settings } from '../../shared/types'
 
 const bridge = (window as unknown as { manyaki: Bridge }).manyaki
 const $ = <T extends HTMLElement>(id: string) => document.getElementById(id) as T
@@ -28,7 +28,7 @@ function fill(s: Settings) {
   $<HTMLInputElement>('launch').checked = s.launchAtLogin
   $<HTMLInputElement>('dnd').checked = s.dnd
   $<HTMLInputElement>('muted').checked = s.voiceMuted
-  $<HTMLInputElement>('neural').checked = s.neuralVoice
+  for (const r of document.querySelectorAll<HTMLInputElement>('input[name=brain]')) r.checked = r.value === s.brainMode
   $<HTMLInputElement>('titles').checked = s.shareTitles
   $<HTMLTextAreaElement>('work').value = s.categoryRules.work.join(', ')
   $<HTMLTextAreaElement>('distraction').value = s.categoryRules.distraction.join(', ')
@@ -105,7 +105,25 @@ async function init() {
   $<HTMLInputElement>('launch').onchange = (e) => save({ launchAtLogin: (e.target as HTMLInputElement).checked })
   $<HTMLInputElement>('dnd').onchange = (e) => save({ dnd: (e.target as HTMLInputElement).checked })
   $<HTMLInputElement>('muted').onchange = (e) => save({ voiceMuted: (e.target as HTMLInputElement).checked })
-  $<HTMLInputElement>('neural').onchange = (e) => save({ neuralVoice: (e.target as HTMLInputElement).checked })
+  for (const r of document.querySelectorAll<HTMLInputElement>('input[name=brain]')) r.onchange = () => save({ brainMode: r.value as Settings['brainMode'] })
+  const renderLocal = (st: LocalStatus | null) => {
+    const el = $('local-state')
+    const btn = $<HTMLButtonElement>('local-download')
+    if (!st) { el.textContent = 'not available'; return }
+    const parts = [st.llm, st.asr, st.tts]
+    const downloading = parts.includes('downloading')
+    const ready = parts.every((p) => p === 'ready' || p === 'loaded')
+    el.textContent = st.error ? `— error: ${st.error}` : downloading ? `— downloading ${Math.round(st.progress * 100)}%` : ready ? `— ready ✓${st.llm === 'loaded' ? ' (awake)' : ''}` : '— not downloaded yet'
+    $('local-bar').style.width = `${Math.round((ready ? 1 : st.progress) * 100)}%`
+    btn.disabled = downloading || ready
+    btn.textContent = ready ? 'Downloaded ✓' : downloading ? 'Downloading…' : 'Download (~2.5 GB)'
+  }
+  renderLocal(await bridge.local.status().catch(() => null))
+  bridge.on('local-status', renderLocal)
+  $('local-download').onclick = () => {
+    $<HTMLButtonElement>('local-download').disabled = true
+    void bridge.local.download().then(renderLocal, (e: Error) => { $('local-state').textContent = `— download failed: ${e.message}` ; $<HTMLButtonElement>('local-download').disabled = false })
+  }
   $<HTMLInputElement>('titles').onchange = (e) => save({ shareTitles: (e.target as HTMLInputElement).checked })
   const rules = () => {
     const split = (id: string) => $<HTMLTextAreaElement>(id).value.split(',').map((s) => s.trim().toLowerCase()).filter(Boolean)

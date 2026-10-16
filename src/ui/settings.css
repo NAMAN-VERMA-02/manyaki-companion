@@ -215,3 +215,8 @@ input[type='text'], input:not([type]), input[type='password'], input[type='numbe
 }
 form.row input { flex: 1; }
 #quit { font-size: 18px; }
+
+.offline-card { margin-top: 10px; padding: 10px 12px; border-radius: 12px; background: var(--bg); box-shadow: 0 0 0 1px var(--pink-soft); }
+.bar { height: 6px; border-radius: 6px; background: var(--pink-soft); margin-top: 6px; overflow: hidden; }
+.bar > div { height: 100%; width: 0; background: var(--pink); transition: width 0.4s ease; }
+button:disabled { opacity: 0.6; cursor: default; }

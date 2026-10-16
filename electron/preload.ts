@@ -3,6 +3,7 @@ import type { Bridge } from '../shared/types'
 
 const bridge: Bridge = {
   platform: process.platform,
+  homeDir: require('node:os').homedir(),
   debug: process.argv.includes('--manyaki-debug'),
   getDisplay: () => ipcRenderer.invoke('display:get'),
   followWindow: !process.argv.includes('--manyaki-debug'),
@@ -22,6 +23,14 @@ const bridge: Bridge = {
   openSettings: () => ipcRenderer.send('settings:open'),
   openHome: () => ipcRenderer.send('home:open'),
   quit: () => ipcRenderer.send('app:quit'),
+  local: {
+    status: () => ipcRenderer.invoke('local:status'),
+    download: () => ipcRenderer.invoke('local:download'),
+    warm: (system) => ipcRenderer.invoke('local:warm', system),
+    chat: (system, history, text) => ipcRenderer.invoke('local:chat', system, history, text),
+    transcribe: (audio) => ipcRenderer.invoke('local:transcribe', audio),
+    tts: (text, voice) => ipcRenderer.invoke('local:tts', text, voice)
+  },
   sendCommand: (cmd) => ipcRenderer.send('command:send', cmd),
   reportStatus: (s) => ipcRenderer.send('status:report', s),
   showMenu: () => ipcRenderer.send('menu:popup'),

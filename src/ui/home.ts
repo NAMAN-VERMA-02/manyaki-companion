@@ -24,7 +24,7 @@ const DOING: Record<string, string> = {
   jump: 'jumping', drag: 'being carried', land: 'landing'
 }
 const BRAIN: Record<Status['brain'], string> = {
-  live: '🧠 Live voice ready', connecting: '🧠 connecting…', fallback: '🧠 backup brain', 'no-key': '🧠 needs a key',
+  live: '🧠 Live voice ready', connecting: '🧠 connecting…', fallback: '🧠 backup brain', local: '🧠 local brain (offline)', 'no-key': '🧠 needs a key',
   'bad-key': '🧠 key rejected', offline: '🧠 offline'
 }
 

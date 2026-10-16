@@ -140,7 +140,24 @@
       <label class="check"><input id="launch" type="checkbox" /> Start Manyaki when Windows starts</label>
       <label class="check"><input id="dnd" type="checkbox" /> Do not disturb (she stays quiet)</label>
       <label class="check"><input id="muted" type="checkbox" /> Mute her voice (she replies in the speech bubble only)</label>
-      <label class="check"><input id="neural" type="checkbox" /> Offline neural voice (downloads ~300 MB; only quick on a good GPU — otherwise she uses Windows' voice when offline)</label>
+
+    </section>
+
+    <section id="brain-section">
+      <h2>Brain & privacy</h2>
+      <label class="radio"><input type="radio" name="brain" value="auto" /> <span><b>Auto</b> — Gemini when online (best voice, ~1 s replies); her offline brain takes over when there's no internet</span></label>
+      <label class="radio"><input type="radio" name="brain" value="private" /> <span><b>🔒 Private</b> — everything runs on this PC; nothing is sent to Google (slower, simpler replies)</span></label>
+      <div class="offline-card">
+        <div class="row" style="align-items:center">
+          <div style="flex:1">
+            <b>Offline brain</b> <span class="hint" id="local-state">checking…</span>
+            <div class="bar"><div id="local-bar"></div></div>
+          </div>
+          <button id="local-download" class="primary">Download (~2.5 GB)</button>
+        </div>
+        <p class="hint">Qwen2.5-3B (thinking) · Whisper small (hearing, handles Hindi) · Kokoro (voice). Downloaded once from Hugging Face, then works with no internet.</p>
+      </div>
+      <p class="hint">Either way: her memory is encrypted on this PC, personal details (phone, email, ID/card numbers, keys, your folder paths) are masked before anything goes to Gemini, and text from windows/files is treated as data — it can't make her open things.</p>
     </section>
 
     <section>
