@@ -74,8 +74,12 @@ export class LiveBrain {
     this.set('connecting')
     const t0 = performance.now()
     const resume = this.resumeHandle && Date.now() - this.resumeAt < 120000 ? this.resumeHandle : undefined
+    let closedEarly = ''
+    let rejectEarly: (e: Error) => void = () => undefined
+    const early = new Promise<never>((_, reject) => { rejectEarly = reject })
+    this.closedDuringConnect = (msg) => { closedEarly = msg; rejectEarly(new Error(msg)) }
     try {
-      const session = await this.ai.live.connect({
+      const pending = this.ai.live.connect({
         model: this.model,
         config: {
           responseModalities: [Modality.AUDIO],
@@ -105,12 +109,23 @@ export class LiveBrain {
           onclose: (e) => this.onClose(e.code, e.reason)
         }
       })
+      const session = await Promise.race([
+        pending,
+        early,
+        new Promise<never>((_, reject) => setTimeout(() => reject(new Error('connect timeout')), 10000))
+      ])
+      this.closedDuringConnect = null
+      if (closedEarly) {
+        try { session.close() } catch { /* ignore */ }
+        throw new Error(closedEarly)
+      }
       this.session = session
       this.connectMs = Math.round(performance.now() - t0)
       this.set('open')
       this.touch()
       return session
     } catch (err) {
+      this.closedDuringConnect = null
       const msg = (err as Error).message ?? String(err)
       this.log(`live connect failed: ${msg}`)
       this.classifyFailure(msg)
@@ -129,7 +144,13 @@ export class LiveBrain {
     }
   }
 
+  private closedDuringConnect: ((msg: string) => void) | null = null
+
   private onClose(code: number, reason: string) {
+    if (this.closedDuringConnect && !this.session) {
+      this.closedDuringConnect(`${code} ${reason || 'closed while connecting'}`)
+      return
+    }
     const was = this.session
     this.session = null
     this.generating = false

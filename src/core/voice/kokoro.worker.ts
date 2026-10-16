@@ -6,10 +6,10 @@ import { KokoroTTS } from 'kokoro-js'
 let tts: KokoroTTS | null = null
 let loading: Promise<KokoroTTS> | null = null
 
-async function load(): Promise<KokoroTTS> {
+async function load(device?: 'wasm' | 'webgpu'): Promise<KokoroTTS> {
   if (tts) return tts
   if (!loading) {
-    const webgpu = 'gpu' in navigator && !!(await (navigator as unknown as { gpu: { requestAdapter(): Promise<unknown> } }).gpu.requestAdapter().catch(() => null))
+    const webgpu = device ? device === 'webgpu' : 'gpu' in navigator && !!(await (navigator as unknown as { gpu: { requestAdapter(): Promise<unknown> } }).gpu.requestAdapter().catch(() => null))
     loading = KokoroTTS.from_pretrained('onnx-community/Kokoro-82M-v1.0-ONNX', {
       dtype: webgpu ? 'fp32' : 'q8',
       device: webgpu ? 'webgpu' : 'wasm',
@@ -23,11 +23,11 @@ async function load(): Promise<KokoroTTS> {
   return tts
 }
 
-self.onmessage = async (e: MessageEvent<{ type: 'load' } | { type: 'speak'; id: number; text: string; voice: string; speed: number }>) => {
+self.onmessage = async (e: MessageEvent<{ type: 'load'; device?: 'wasm' | 'webgpu' } | { type: 'speak'; id: number; text: string; voice: string; speed: number }>) => {
   const msg = e.data
   try {
     if (msg.type === 'load') {
-      await load()
+      await load(msg.device)
       return
     }
     const model = await load()

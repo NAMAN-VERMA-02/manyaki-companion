@@ -32,6 +32,7 @@ export interface Settings {
   dnd: boolean
   shareTitles: boolean           // send full window titles to the model (off by default)
   launchAtLogin: boolean
+  neuralVoice: boolean           // opt-in local Kokoro voice for offline use (needs a decent GPU)
   checkInMinutes: number
   focusMinutes: number
   breakMinutes: number
@@ -63,6 +64,7 @@ export const DEFAULT_SETTINGS: Settings = {
   dnd: false,
   shareTitles: false,
   launchAtLogin: true,
+  neuralVoice: false,
   checkInMinutes: 12,
   focusMinutes: 25,
   breakMinutes: 5,

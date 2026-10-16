@@ -1,8 +1,12 @@
 import type { AudioOut } from './audioOut'
 
+export type CloudTts = (text: string) => Promise<{ samples: Float32Array; rate: number } | null>
+
 /**
- * Fallback speech when Gemini Live is unavailable: Kokoro (local neural TTS) sentence by sentence,
- * with the system's speechSynthesis as a last resort while Kokoro is still downloading.
+ * Speech when Gemini Live is unavailable, sentence by sentence, best option first:
+ *   1. Gemini TTS (same voice as Live, ~1 s) when online with a key,
+ *   2. Kokoro, a local neural voice, only if the user opted in (it needs a capable GPU to be quick),
+ *   3. Windows' built-in voice, instant and always available.
  */
 export class LocalVoice {
   private worker: Worker | null = null
@@ -16,13 +20,15 @@ export class LocalVoice {
   voice = 'af_heart'
   onProgress?: (p: number) => void
   onReady?: () => void
+  /** Set by the companion when a Gemini key is available and we are online. */
+  cloud: CloudTts | null = null
 
   constructor(private readonly out: AudioOut, private readonly log: (m: string) => void) {}
 
   get isReady() { return this.ready }
 
   /** Start downloading the model in the background. Safe to call repeatedly. */
-  warmUp() {
+  warmUp(device?: 'wasm' | 'webgpu') {
     if (this.worker) return
     this.worker = new Worker(new URL('./kokoro.worker.ts', import.meta.url), { type: 'module' })
     this.worker.onmessage = (e) => {
@@ -33,7 +39,7 @@ export class LocalVoice {
       else if (m.type === 'error') { this.log(`kokoro: ${m.message}`); this.pending.get(m.id)?.(null); this.pending.delete(m.id) }
     }
     this.worker.onerror = (e) => this.log(`kokoro worker: ${e.message}`)
-    this.worker.postMessage({ type: 'load' })
+    this.worker.postMessage({ type: 'load', device })
   }
 
   /** Speak text; sentences are synthesised ahead while earlier ones play. */
@@ -46,7 +52,11 @@ export class LocalVoice {
         const r = await jobs[i]
         if (gen !== this.generation) return
         if (r) this.out.enqueueFloat(r.samples, r.rate)
-        else await this.systemSpeak(sentences[i])
+        else {
+          // Don't talk over a sentence that is still playing from another engine.
+          while (this.out.speaking && gen === this.generation) await new Promise((res) => setTimeout(res, 50))
+          if (gen === this.generation) await this.systemSpeak(sentences[i])
+        }
       }
     })
   }
@@ -57,7 +67,15 @@ export class LocalVoice {
     this.out.stop()
   }
 
-  private synth(text: string): Promise<{ samples: Float32Array; rate: number } | null> {
+  private async synth(text: string): Promise<{ samples: Float32Array; rate: number } | null> {
+    if (this.cloud && navigator.onLine) {
+      const r = await this.cloud(text).catch((err: Error) => { this.log(`cloud tts: ${err.message}`); return null })
+      if (r) return r
+    }
+    return this.kokoro(text)
+  }
+
+  private kokoro(text: string): Promise<{ samples: Float32Array; rate: number } | null> {
     if (!this.ready || !this.worker) return Promise.resolve(null)
     const id = this.nextId++
     return new Promise((resolve) => {

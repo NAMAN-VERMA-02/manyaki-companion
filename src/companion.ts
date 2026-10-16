@@ -45,6 +45,7 @@ export class Companion implements ToolHost {
   private toggleListening = false
   private saveTimer = 0
   private micError = ''
+  private keyRejected = false
 
   constructor(private readonly bridge: Bridge, private readonly stage: Stage) {
     const log = (m: string) => bridge.log('warn', m)
@@ -103,7 +104,7 @@ export class Companion implements ToolHost {
     setInterval(() => this.considerNudge(), 20000)
     window.addEventListener('online', () => this.stage.chip.set('back online ✨', '', 2500))
 
-    this.local.onProgress = (p) => { if (!this.live.usable) this.stage.chip.set(`warming up my voice… ${Math.round(p * 100)}%`, '', 3000) }
+    this.local.onProgress = (p) => { if (p < 1) this.stage.chip.set(`downloading my offline voice… ${Math.round(p * 100)}%`, '', 3000) }
     // Greet once she has landed.
     setTimeout(() => this.greet(), 2600)
   }
@@ -113,9 +114,11 @@ export class Companion implements ToolHost {
   private async loadKey() {
     const key = await this.bridge.getApiKey()
     this.hasKey = !!key
+    this.keyRejected = false
     this.live.setKey(key)
     this.text.setKey(key)
-    if (!key) this.local.warmUp()
+    this.local.cloud = key ? (t) => this.text.tts(t, this.settings.voiceName) : null
+    if (this.settings.neuralVoice) this.local.warmUp()
   }
 
   private applySettings(s: Settings) {
@@ -126,6 +129,7 @@ export class Companion implements ToolHost {
     this.text.model = s.textModel
     this.stage.setSize(s.size)
     this.stage.body.dnd = s.dnd
+    if (s.neuralVoice) this.local.warmUp()
     if (prev?.voiceName !== s.voiceName) this.live.close()
     void this.syncMic()
   }
@@ -254,11 +258,15 @@ export class Companion implements ToolHost {
 
   private onLiveState(s: LiveState, detail?: string) {
     if (s === 'bad-key' && this.hasKey) {
-      this.stage.chip.set('my Gemini key was rejected 🥺 — check Settings', '', 10000)
+      // Same key for every Gemini call: stop trying until the user saves a new one.
+      this.keyRejected = true
+      this.text.setKey('')
+      this.local.cloud = null
+      this.react('worried', 'shake', 'sweat')
+      this.stage.bubble.show('Ehh… Google rejected my key 🥺 Could you check it in Settings? (tray icon → Settings)', { holdMs: 12000 })
       this.bridge.log('warn', `live: bad key ${detail ?? ''}`)
     } else if (s === 'unavailable') {
       this.bridge.log('warn', `live unavailable: ${detail ?? ''}`)
-      this.local.warmUp()
       if (this.stage.body.conv !== 'none' && !this.audio.speaking) this.stage.body.setConv('none')
     }
   }
@@ -267,9 +275,14 @@ export class Companion implements ToolHost {
 
   /** Text-model reply (typed text, recorded audio, or an event), spoken by the local voice. */
   private async fallbackReply(input: { text?: string; audio?: Float32Array; event?: string }) {
-    this.local.warmUp()
     if (!this.text.usable) {
       if (input.event) return // don't nag with canned lines for every event when offline
+      if (this.keyRejected || !this.hasKey) {
+        this.react('worried', 'none', 'question')
+        this.stage.bubble.show(this.hasKey ? "My key isn't working… fix it in Settings and I'll be all ears!" : 'I need a Gemini key to chat — tray icon → Settings 💗', { holdMs: 6000 })
+        this.stage.body.setConv('none')
+        return
+      }
       this.sayOffline('offline-reply')
       return
     }
@@ -301,14 +314,14 @@ export class Companion implements ToolHost {
     this.mic.setHerSpeaking(true)
     this.local.speak(text)
     // When the system voice or Kokoro finishes, the drain handler resets conv; guard for silent failure.
-    window.setTimeout(() => { if (!this.audio.speaking && !this.local.systemSpeaking) { this.stage.body.setConv('none'); this.mic.setHerSpeaking(false) } }, Math.max(3000, text.length * 90))
+    window.setTimeout(() => { if (!this.audio.speaking && !this.local.systemSpeaking) { this.stage.body.setConv('none'); this.mic.setHerSpeaking(false) } }, Math.max(6000, text.length * 120))
   }
 
   private sayOffline(kind: keyof typeof OFFLINE_LINES, speak = true) {
     const l = OFFLINE_LINES[kind]
     const line = pick(l.text)
     this.react(l.emotion, l.action, null)
-    if (speak && this.local.isReady) this.speakLocal(line)
+    if (speak) this.speakLocal(line)
     else {
       this.stage.bubble.show(line, { holdMs: 4500 })
       this.stage.body.setConv('none')
@@ -606,7 +619,7 @@ export class Companion implements ToolHost {
       { label: 'focus 10s', run: () => { this.timer.start('focus', 10 / 60); this.stage.body.focus = true } },
       { label: 'nudge now', run: () => { this.lastAnyNudgeAt = 0; this.lastInteractionAt = 0; this.considerNudge() } },
       { label: 'offline line', run: () => this.sayOffline('check-in') },
-      { label: 'kokoro', run: () => { this.local.warmUp(); this.speakLocal('Hi! This is my local voice. Can you hear me?') } },
+      { label: 'local voice', run: () => this.speakLocal('Hi! This is my backup voice. Can you hear me?') },
       { label: 'distill', run: () => void this.distill() },
       { label: 'chat', run: () => this.openChat() }
     ]

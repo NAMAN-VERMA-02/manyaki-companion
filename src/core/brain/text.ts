@@ -56,6 +56,32 @@ export class TextBrain {
     return { text: '' }
   }
 
+  ttsModel = 'gemini-3.8-flash-lite-tts'
+  ttsUnavailableUntil = 0
+
+  /** Speech in her Live voice via Gemini's TTS model: 24 kHz PCM16. */
+  async tts(text: string, voiceName: string): Promise<{ samples: Float32Array; rate: number } | null> {
+    if (!this.ai || Date.now() < this.ttsUnavailableUntil) return null
+    try {
+      const res = await this.ai.models.generateContent({
+        model: this.ttsModel,
+        contents: [{ role: 'user', parts: [{ text: `Say cheerfully and warmly, like a cute supportive friend: ${text}` }] }],
+        config: { responseModalities: ['AUDIO'], speechConfig: { voiceConfig: { prebuiltVoiceConfig: { voiceName } } } }
+      })
+      const part = res.candidates?.[0]?.content?.parts?.find((p) => p.inlineData?.data)
+      if (!part?.inlineData?.data) return null
+      const rate = Number(/rate=(\d+)/.exec(part.inlineData.mimeType ?? '')?.[1] ?? 24000)
+      const bytes = Uint8Array.from(atob(part.inlineData.data), (c) => c.charCodeAt(0))
+      const view = new DataView(bytes.buffer)
+      const samples = new Float32Array(bytes.byteLength >> 1)
+      for (let i = 0; i < samples.length; i++) samples[i] = view.getInt16(i * 2, true) / 32768
+      return { samples, rate }
+    } catch (err) {
+      if (/quota|exhaust|429|not found|404/i.test((err as Error).message)) this.ttsUnavailableUntil = Date.now() + 10 * 60000
+      throw err
+    }
+  }
+
   /** Pulls durable facts and a one-line summary out of recent conversation. Cheap model, JSON output. */
   async distill(turns: Turn[], known: string[]): Promise<{ facts: string[]; summary: string }> {
     if (!this.ai || turns.length < 2) return { facts: [], summary: '' }
