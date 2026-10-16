@@ -213,6 +213,7 @@ function registerIpc() {
   ipcMain.handle('key:has', () => !!store.getApiKey())
   ipcMain.handle('key:set', (_e, key: string) => {
     const ok = store.setApiKey(key)
+    log('warn', `api key ${key.trim() ? 'saved' : 'cleared'} (ok=${ok}, length ${key.trim().length})`)
     if (ok) command({ type: 'reload-key' })
     return ok
   })
