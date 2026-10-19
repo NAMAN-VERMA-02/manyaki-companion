@@ -20,6 +20,7 @@ const bridge: Bridge = {
   wipeMemory: () => ipcRenderer.invoke('memory:wipe'),
   exportMemory: () => ipcRenderer.invoke('memory:export'),
   notify: (title, body) => ipcRenderer.send('notify', title, body),
+  writeLetter: (fileName, body) => ipcRenderer.invoke('letter:write', fileName, body),
   openSettings: () => ipcRenderer.send('settings:open'),
   openHome: () => ipcRenderer.send('home:open'),
   quit: () => ipcRenderer.send('app:quit'),
@@ -30,7 +31,28 @@ const bridge: Bridge = {
     warm: (system) => ipcRenderer.invoke('local:warm', system),
     chat: (system, history, text, teach) => ipcRenderer.invoke('local:chat', system, history, text, teach),
     transcribe: (audio) => ipcRenderer.invoke('local:transcribe', audio),
-    tts: (text, voice) => ipcRenderer.invoke('local:tts', text, voice)
+    tts: (text, voice) => ipcRenderer.invoke('local:tts', text, voice),
+    emotion: (texts) => ipcRenderer.invoke('local:emotion', texts)
+  },
+  desk: {
+    windows: () => ipcRenderer.invoke('desk:windows'),
+    windowAction: (q, op) => ipcRenderer.invoke('desk:window', q, op),
+    closeAll: (q) => ipcRenderer.invoke('desk:close-all', q),
+    readApp: (q) => ipcRenderer.invoke('desk:read-app', q),
+    press: (id) => ipcRenderer.invoke('desk:press', id),
+    typeInto: (id, t) => ipcRenderer.invoke('desk:type-into', id, t),
+    type: (t) => ipcRenderer.invoke('desk:type', t),
+    keys: (c) => ipcRenderer.invoke('desk:keys', c),
+    scroll: (d, n) => ipcRenderer.invoke('desk:scroll', d, n),
+    clickText: (t, dbl) => ipcRenderer.invoke('desk:click-text', t, dbl),
+    seeScreen: () => ipcRenderer.invoke('desk:see'),
+    screenshot: () => ipcRenderer.invoke('desk:screenshot')
+  },
+  eyes: {
+    task: (text) => ipcRenderer.invoke('eyes:task', text),
+    info: () => ipcRenderer.invoke('eyes:info'),
+    newPairing: () => ipcRenderer.invoke('eyes:new-pairing'),
+    openExtensionFolder: () => ipcRenderer.invoke('eyes:open-extension')
   },
   sendCommand: (cmd) => ipcRenderer.send('command:send', cmd),
   reportStatus: (s) => ipcRenderer.send('status:report', s),

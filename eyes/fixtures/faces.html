@@ -1,0 +1,46 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Team page</title>
+<style>
+  body { margin: 0; font: 15px/1.5 system-ui, sans-serif; background: #fafafa; color: #222; }
+  main { max-width: 1000px; margin: 24px auto; padding: 0 16px; }
+  .grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(180px, 1fr)); gap: 16px; }
+  figure { margin: 0; background: #fff; border-radius: 12px; padding: 10px; box-shadow: 0 2px 8px rgba(0,0,0,.06); }
+  img { width: 100%; aspect-ratio: 1; object-fit: cover; border-radius: 8px; display: block; }
+  .empty { padding: 24px; background: #fff3cd; border-radius: 12px; }
+</style>
+</head>
+<body>
+<main>
+  <h1>Our team</h1>
+  <!-- Face ground truth: put portrait photos you have the rights to in eyes/fixtures/faces/ as 1.jpg, 2.jpg, …
+       and list each face's box (as a fraction of the image) in faces.json: [{"file":"1.jpg","box":[x,y,w,h]}]. -->
+  <div id="grid" class="grid"></div>
+  <p id="empty" class="empty" hidden>No face photos yet: add portraits to eyes/fixtures/faces/ and faces.json to measure face recall and precision.</p>
+</main>
+<script>
+  fetch('faces/faces.json').then((r) => (r.ok ? r.json() : [])).catch(() => []).then((list) => {
+    if (!list.length) { document.getElementById('empty').hidden = false; return }
+    for (const f of list) {
+      const fig = document.createElement('figure')
+      fig.style.position = 'relative'
+      const img = document.createElement('img')
+      img.src = `faces/${f.file}`
+      img.alt = 'Team member photo'
+      fig.append(img)
+      img.onload = () => {
+        const [x, y, w, h] = f.box
+        const s = document.createElement('span')
+        s.dataset.truth = 'FACE'
+        Object.assign(s.style, { position: 'absolute', left: `${10 + x * img.width}px`, top: `${10 + y * img.height}px`, width: `${w * img.width}px`, height: `${h * img.height}px` })
+        fig.append(s)
+      }
+      document.getElementById('grid').append(fig)
+    }
+  })
+</script>
+</body>
+</html>

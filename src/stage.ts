@@ -118,23 +118,46 @@ export class Stage {
   }
 
   private lastRect = { x: NaN, y: NaN, width: 0, height: 0 }
+  /** Battery saver: lower frame rates (Settings → Advanced). Smooth by default. */
+  batterySaver = false
 
-  /** Keep the (small) window wrapped around her, the bubble, emotes and the chat box. */
+  /**
+   * Keep the (small) window wrapped around her, the bubble, emotes and the chat box.
+   *
+   * Moving an OS window and repainting its content can't happen in the same instant, so moving it a
+   * pixel every frame while she walks made her shake. Instead the window keeps some slack around her
+   * (more while she's moving) and only jumps when she gets near its edge or it's far too big: a few
+   * moves a second at most, and none at all while she stands still.
+   */
   private followWindow() {
     const a = this.avatar
     const box = a.screenBox()
-    const cx = (box.left + box.right) / 2
     const bubbleOn = this.bubble.visible
     const chatOn = !document.getElementById('chat')!.classList.contains('hidden')
     const bw = bubbleOn ? this.bubble.element.offsetWidth + 40 : 0
     const bh = bubbleOn ? this.bubble.element.offsetHeight + 24 : 0
-    const width = quant(Math.max(box.right - box.left + a.heightPx * 0.5, bw, chatOn ? 360 : 0, 220), 32)
+    const needW = Math.max(box.right - box.left + a.heightPx * 0.5, bw, chatOn ? 360 : 0, 220)
     const top = box.top - Math.max(bh, a.heightPx * 0.32) - 8
     const floor = this.display.workArea.y + this.display.workArea.height - this.display.bounds.y
     const bottom = Math.min(floor, box.bottom + 32)
-    const height = quant(bottom - top, 32)
-    const want = { x: Math.round(cx - width / 2), y: Math.round(bottom - height), width, height }
+    const cx = (box.left + box.right) / 2
+    const m = this.body.mode
+    const moving = m === 'walk' || m === 'fall' || m === 'jump' || m === 'drag' || m === 'land'
+
     const r = this.lastRect
+    const pad = a.heightPx * 0.1
+    const fits = Number.isFinite(r.x) &&
+      cx - needW / 2 >= r.x + (moving ? pad : 0) && cx + needW / 2 <= r.x + r.width - (moving ? pad : 0) &&
+      top >= r.y && bottom <= r.y + r.height
+    const tooBig = !moving && (r.width > quant(needW, 64) + a.heightPx * 0.6 || r.height > quant(bottom - top, 64) + a.heightPx * 0.6)
+    if (fits && !tooBig) return
+
+    // Room to move: horizontal slack while walking/falling/being dragged, vertical slack for jumps.
+    const slackX = moving ? a.heightPx * 0.9 : 0
+    const slackY = moving && m !== 'walk' ? a.heightPx * 0.5 : 0
+    const width = quant(needW + slackX * 2, 64)
+    const height = quant(bottom - top + slackY, 64)
+    const want = { x: Math.round(cx - width / 2), y: Math.round(bottom - height), width, height }
     if (want.x === r.x && want.y === r.y && want.width === r.width && want.height === r.height) return
     this.lastRect = want
     const got = this.bridge.setWindowRect(want)
@@ -142,18 +165,18 @@ export class Stage {
   }
 
   private targetFps() {
-    // Each frame costs CPU on a transparent window, so the rate follows what she is doing.
-    // Measured on an Intel UHD laptop: ~4% of one core per frame-per-second.
+    // Each frame costs CPU on a transparent window, so the rate follows what she is doing. Smooth mode
+    // keeps even idle breathing, hair and blinks at 30 fps; battery saver drops to the old low rates.
     if (this.hiddenAlpha) return 2
+    const saver = this.batterySaver
     const m = this.body.mode
     if (m === 'walk' || m === 'fall' || m === 'jump' || m === 'drag' || m === 'land') return 60
-    if (this.body.conv === 'talking' || m === 'act') return 30
     if (this.squash.active) return 60
-    if (this.laptop.busy) return 30
-    if (this.body.conv !== 'none' || this.hover || this.emotes.active || this.face.animating) return 24
-    if (m === 'sleep') return 6
-    if (m === 'sit') return 10
-    return 12
+    if (this.body.conv === 'talking' || m === 'act' || this.laptop.busy) return saver ? 30 : 48
+    if (this.body.conv !== 'none' || this.hover || this.emotes.active || this.face.animating) return saver ? 24 : 40
+    if (m === 'sleep') return saver ? 6 : 15
+    if (m === 'sit') return saver ? 10 : 30
+    return saver ? 12 : 30
   }
 
   /**

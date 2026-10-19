@@ -22,6 +22,13 @@ describe('parseIntent (English + Hinglish)', () => {
     expect(parseIntent('my name is Naman')).toEqual({ tool: 'set_user_name', arg: 'Naman' })
     expect(parseIntent('remember that my exam is on Nov 3')).toEqual({ tool: 'remember', arg: 'my exam is on Nov 3' })
   })
+  it('hands browser tasks to Manyaki Eyes', () => {
+    expect(parseIntent('in my browser search for wireless earbuds')).toEqual({ tool: 'browser_task', arg: 'search for wireless earbuds' })
+    expect(parseIntent('is page pe form bhar do')).toEqual({ tool: 'browser_task', arg: 'form bhar do' })
+    expect(parseIntent('on this page click sign in please')).toEqual({ tool: 'browser_task', arg: 'click sign in' })
+    expect(parseIntent('in my browser search for a focus timer')).toEqual({ tool: 'browser_task', arg: 'search for a focus timer' })
+    expect(parseIntent('the page is so slow')).toBeNull()
+  })
   it('leaves normal chat alone', () => {
     expect(parseIntent('aaj padhai ka mood nahi hai yaar')).toBeNull()
     expect(parseIntent('explain recursion simply')).toBeNull()

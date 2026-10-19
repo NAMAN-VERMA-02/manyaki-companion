@@ -1,0 +1,68 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Manyaki Eyes</title>
+    <link rel="stylesheet" href="./panel.css" />
+  </head>
+  <body>
+    <header>
+      <div class="brand"><span class="logo">👁️</span><div><h1>Manyaki Eyes</h1><p id="conn" class="sub">connecting…</p></div></div>
+      <button id="bench" class="ghost" title="Open the benchmark">📊</button>
+    </header>
+
+    <section class="card">
+      <form id="task-form">
+        <textarea id="task" rows="3" placeholder="Tell me what to do on this page, e.g. “Sign in with asha@example.com and my password Tr0ub4dor&3” or “search for wireless earbuds under 2000”"></textarea>
+        <div class="row">
+          <button id="run" class="primary" type="submit">▶ Run</button>
+          <button id="stop" type="button" disabled>■ Stop</button>
+          <label class="inline"><input id="pv" type="checkbox" /> show redactions on the page</label>
+        </div>
+      </form>
+      <p id="status" class="hint">Your details stay in this browser: I hide them before asking the server.</p>
+      <div id="dialog" class="dialog hidden">
+        <p id="dialog-q"></p>
+        <input id="dialog-in" class="hidden" />
+        <div class="row"><button id="dialog-yes" class="primary">Allow</button><button id="dialog-no">No</button></div>
+      </div>
+    </section>
+
+    <section class="card">
+      <div class="row between">
+        <h2>What the server sees</h2>
+        <label class="inline"><input id="show-original" type="checkbox" /> original (local only)</label>
+      </div>
+      <div class="shot"><canvas id="view"></canvas><p id="shot-empty" class="hint">Run a task (or press 👁 Look) to see the redacted view.</p></div>
+      <div class="row"><button id="look" type="button">👁 Look only</button><span id="counts" class="hint"></span></div>
+      <div id="chips" class="chips"></div>
+    </section>
+
+    <section class="card">
+      <h2>Steps</h2>
+      <ol id="log" class="log"></ol>
+    </section>
+
+    <section class="card">
+      <h2>Metrics</h2>
+      <table id="metrics" class="metrics"></table>
+      <p id="models" class="hint"></p>
+    </section>
+
+    <section class="card">
+      <details>
+        <summary>Settings</summary>
+        <label>Server <input id="server" placeholder="http://127.0.0.1:47821" /></label>
+        <label>Pairing code <input id="pairing" placeholder="from Manyaki Home → Eyes" autocomplete="off" /></label>
+        <label class="check"><input id="faces" type="checkbox" /> Find and mosaic faces (BlazeFace, 230 KB)</label>
+        <label class="check"><input id="deep" type="checkbox" /> Deep vision: text in images + names + caption (Florence-2 + NER, ≈360 MB once, best with WebGPU)</label>
+        <label class="check"><input id="sendImage" type="checkbox" /> Send the redacted screenshot (for vision models)</label>
+        <label class="check"><input id="inbox" type="checkbox" /> Accept tasks from Manyaki (voice or chat)</label>
+        <label>Max steps <input id="maxSteps" type="number" min="1" max="30" /></label>
+        <p class="hint">Before any request: passwords, cards, IDs, emails, phones, names and faces are found on this device and replaced with tokens like [[EMAIL_1]]. The server plans with tokens; real values are typed back in locally.</p>
+      </details>
+    </section>
+    <script type="module" src="./panel.ts"></script>
+  </body>
+</html>

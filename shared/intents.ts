@@ -10,6 +10,7 @@ export type Intent =
   | { tool: 'complete_goal'; arg: string }
   | { tool: 'remember'; arg: string }
   | { tool: 'set_user_name'; arg: string }
+  | { tool: 'browser_task'; arg: string }
 
 const FILLER = /\b(please|plz|pls|can you|could you|will you|would you|kindly|hey|hi|manyaki|maniaki|my|mera|meri|mere|the|a|an|for me|mujhe|zara|jaldi|na|do|de|dena|karo|kar|open|khol|kholo|kholdo|kholna|launch|start|chalao|chala|run|up|now|abhi|ek|baar|this|that|wala|wali|vala)\b/gi
 const KNOWN_FOLDERS = /\b(downloads?|documents?|docs|desktop|pictures?|photos?|music|videos?|home)\b/i
@@ -36,6 +37,14 @@ export function parseIntent(raw: string): Intent | null {
   // Name: "my name is Naman", "call me Nam", "mera naam Naman hai"
   const name = /\b(?:my name is|call me|mera naam)\s+([A-Za-zऀ-ॿ][\wऀ-ॿ-]{1,20})/i.exec(t)
   if (name && !/^(is|hai|nahi|not)$/i.test(name[1])) return { tool: 'set_user_name', arg: name[1] }
+
+  // Browser tasks: "in my browser search for…", "is page pe form bhar do", "on this page click sign in".
+  // Checked early so words inside the task ("focus", "goal") don't trigger other intents.
+  const web = /\b(?:in|on) (?:my|the|this) (?:browser|page|tab|website|site)\b|\b(?:browser|page|tab|website|site) (?:me|mein|pe|par)\b|\b(?:is|iss|this) (?:page|site|form) (?:pe|par|me|mein|ko)\b/i
+  if (web.test(t) && /\b(fill|search|click|press|choose|select|sign ?in|log ?in|book|buy|add|type|enter|open|find|bhar|bharo|dhundo|daalo|daal|karo|kar do|like|submit|check|tick)\b/i.test(t)) {
+    const task = t.replace(web, ' ').replace(/\b(manyaki|please|plz|pls|can you|could you|zara)\b/gi, ' ').replace(/\s+/g, ' ').trim()
+    if (task.length > 3) return { tool: 'browser_task', arg: task }
+  }
 
   // Focus timer
   if (/\b(stop|end|cancel|band|khatam|ruk)\b.*\b(focus|timer|pomodoro)\b|\b(focus|timer|pomodoro)\b.*\b(stop|band|cancel|khatam)\b/i.test(low)) return { tool: 'stop_focus' }
@@ -77,10 +86,16 @@ export function moodFromReply(say: string, intent: Intent | null): Mood {
   const s = say.toLowerCase()
   if (intent?.tool === 'start_focus') return { emotion: 'excited', action: 'cheer', emote: 'fire' }
   if (intent?.tool === 'complete_goal') return { emotion: 'excited', action: 'clap', emote: 'party' }
-  if (intent && intent.tool.startsWith('open_')) return { emotion: 'happy', action: 'none', emote: null }
+  if (intent && (intent.tool.startsWith('open_') || intent.tool === 'browser_task')) return { emotion: 'happy', action: 'none', emote: null }
   if (/\b(yay|proud|amazing|awesome|great job|well done|you did it|shabash|wah|congrat)/.test(s)) return { emotion: 'excited', action: 'cheer', emote: 'sparkle' }
+  if (/\b(proud of you|so proud|you nailed|crushed it)/.test(s)) return { emotion: 'proud', action: 'clap', emote: 'star' }
+  if (/\b(missed you|lonely|all alone|akeli)/.test(s)) return { emotion: 'lonely', action: 'none', emote: null }
+  if (/\b(nervous|scary|exam|test tomorrow|deadline|darr)/.test(s)) return { emotion: 'nervous', action: 'none', emote: 'sweat' }
+  if (/\b(wait what|confus|not sure|huh)\b/.test(s)) return { emotion: 'confused', action: 'think', emote: 'question' }
+  if (/\b(let'?s go|you got this|we can do|chalo)\b/.test(s)) return { emotion: 'determined', action: 'cheer', emote: 'fire' }
   if (/\b(sorry|sad|tired|oh no|don't worry|it's okay|koi baat nahi|hug)/.test(s)) return { emotion: 'worried', action: 'none', emote: 'heart' }
-  if (/\b(thank|best|cute|love|aww|hehe)/.test(s)) return { emotion: 'shy', action: 'shy', emote: 'heart' }
+  if (/\b(thank you|thanks|grateful|shukriya)/.test(s)) return { emotion: 'grateful', action: 'nod', emote: 'heart' }
+  if (/\b(best|cute|love|aww|hehe)/.test(s)) return { emotion: 'shy', action: 'shy', emote: 'heart' }
   if (/\b(imagine|think of|let me explain|step|first|basically|samjho|matlab)/.test(s)) return { emotion: 'happy', action: 'think', emote: 'idea' }
   if (/\?\s*$/.test(s)) return { emotion: 'happy', action: 'none', emote: 'question' }
   if (/\b(break|rest|water|stretch|sleep)/.test(s)) return { emotion: 'relaxed', action: 'stretch', emote: 'coffee' }

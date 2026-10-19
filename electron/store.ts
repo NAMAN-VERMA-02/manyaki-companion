@@ -9,12 +9,21 @@ interface Schema {
   /** Memory (name, facts, goals, chat history) encrypted with Windows DPAPI via safeStorage. */
   memoryEnc: string
   apiKeyEnc: string
+  /** Pairing code the browser extension must send to her Eyes server. */
+  eyesPairing: string
 }
 
 const store = new Store<Schema>({
   name: 'manyaki',
-  defaults: { settings: DEFAULT_SETTINGS, memory: null, memoryEnc: '', apiKeyEnc: '' }
+  defaults: { settings: DEFAULT_SETTINGS, memory: null, memoryEnc: '', apiKeyEnc: '', eyesPairing: '' }
 })
+
+export function getEyesPairing(make: () => string): string {
+  let code = store.get('eyesPairing')
+  if (!code) { code = make(); store.set('eyesPairing', code) }
+  return code
+}
+export function setEyesPairing(code: string): void { store.set('eyesPairing', code) }
 
 export function getSettings(): Settings {
   const s = store.get('settings')
@@ -71,10 +80,14 @@ export function migrateMemory(m: Partial<MemoryData> | undefined): MemoryData {
     ...base,
     ...m,
     version: EMPTY_MEMORY.version,
-    facts: Array.isArray(m.facts) ? m.facts.slice(-50) : [],
+    facts: Array.isArray(m.facts) ? m.facts.slice(-300) : [],
     goals: Array.isArray(m.goals) ? m.goals : [],
     turns: Array.isArray(m.turns) ? m.turns.slice(-40) : [],
-    streak: { ...base.streak, ...(m.streak ?? {}) }
+    streak: { ...base.streak, ...(m.streak ?? {}) },
+    followUps: Array.isArray(m.followUps) ? m.followUps.filter((f) => f && typeof f.about === 'string' && typeof f.askOn === 'string').slice(-12) : [],
+    moodLog: Array.isArray(m.moodLog) ? m.moodLog.filter((d) => d && typeof d.day === 'string').slice(-14) : [],
+    voiceBaseline: { ...base.voiceBaseline, ...(m.voiceBaseline ?? {}) },
+    usage: m.usage && typeof m.usage === 'object' && m.usage.apps ? { apps: m.usage.apps, days: m.usage.days ?? {} } : base.usage
   }
 }
 

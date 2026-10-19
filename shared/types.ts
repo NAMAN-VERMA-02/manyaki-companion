@@ -39,14 +39,86 @@ export interface Settings {
   /** Games count as work (streamers / pro players), so she doesn't nag during gaming. */
   gamingIsWork: boolean
   voiceMuted: boolean            // she replies in the bubble only, no audio
+  /** Ignored for an hour she sulks, then cries; cry too much and she gets angry and writes you letters. */
+  emotionalAttachment: boolean
   checkInMinutes: number
   focusMinutes: number
   breakMinutes: number
   categoryRules: { work: string[]; distraction: string[] }
   onboarded: boolean
+  /** Host the Manyaki Eyes server for the browser extension. */
+  eyesEnabled: boolean
+  /** Who plans browser actions: auto (Ollama if installed, else Gemini, else rules), or one of them. */
+  eyesPlanner: 'auto' | 'ollama' | 'gemini' | 'rules'
+  /**
+   * Privacy shield: before anything about the screen leaves this PC (a screenshot, text read from it),
+   * private details are found on-device and hidden. The one privacy switch on the main menu.
+   */
+  privacyShield: boolean
+  /** She keeps an eye on the screen (read on this PC, never stored) so she knows what you're doing. */
+  screenSense: boolean
+  /** Lower frame rates to save battery (Advanced). */
+  batterySaver: boolean
 }
 
-export interface Fact { text: string; at: number }
+/** What she last saw on screen (on-device OCR, private details masked). Lives in memory only. */
+export interface Glance {
+  app: string
+  title: string
+  lines: string[]
+  /** An error message visible on screen, if any (for a gentle offer to help). */
+  error: string | null
+  at: number
+  /** A password manager, bank or private-browsing window: not read at all. */
+  private: boolean
+}
+
+export type WindowOp = 'focus' | 'close' | 'minimize' | 'maximize' | 'restore' | 'snap_left' | 'snap_right' | 'snap_top' | 'snap_bottom' | 'center'
+
+/** Her hands on the desktop (electron/desk.ts). Every method resolves with a short result for the brain. */
+export interface DeskBridge {
+  windows(): Promise<string>
+  windowAction(query: string, op: WindowOp): Promise<string>
+  closeAll(query: string): Promise<string>
+  readApp(query?: string): Promise<string>
+  press(id: string): Promise<string>
+  typeInto(id: string, text: string): Promise<string>
+  type(text: string): Promise<string>
+  keys(combo: string): Promise<string>
+  scroll(direction: 'up' | 'down' | 'top' | 'bottom', amount?: number): Promise<string>
+  clickText(text: string, double?: boolean): Promise<string>
+  seeScreen(): Promise<string>
+  /** One screenshot for a vision model, redacted on this PC when the privacy shield is on. */
+  screenshot(): Promise<{ image: string; hidden: number } | { error: string }>
+}
+
+/** The browser agent server she hosts (see electron/eyes.ts). */
+export interface EyesInfo {
+  running: boolean
+  port: number
+  pairing: string
+  planner: string
+  /** The extension polled in the last ~40 s. */
+  connected: boolean
+  error: string
+}
+
+/** Progress reported by the extension, relayed to her. Never contains private values. */
+export interface EyesEventMsg {
+  kind: 'connected' | 'task' | 'step' | 'done' | 'error' | 'ask'
+  task?: string
+  detail?: string
+  step?: number
+  redactions?: number
+  ms?: number
+}
+
+import type { FollowUp } from './followups'
+import type { MoodDay, VoiceBaseline } from './empathy'
+import type { Usage } from './patterns'
+
+/** One bullet of her memory. `uses`: how often it helped answer something (ranks it higher). */
+export interface Fact { text: string; at: number; uses?: number; kind?: 'fact' | 'routine' }
 export interface Goal { id: string; text: string; done: boolean; day: string }
 export interface Turn { role: 'user' | 'her'; text: string; at: number }
 
@@ -59,6 +131,18 @@ export interface MemoryData {
   summary: string
   streak: { days: number; lastDay: string; sessionsToday: number; sessionsTotal: number }
   focus: { endsAt: number; kind: 'focus' | 'break'; minutes: number } | null
+  /** Her inner state (src/core/affect.ts): mood, energy and how close she feels to them. */
+  affect: unknown
+  /** Things they mentioned that she should ask about later (exams, interviews…). */
+  followUps: FollowUp[]
+  /** How they seemed each day (counts of feelings), last 14 days. */
+  moodLog: MoodDay[]
+  /** Their usual voice (loudness, pitch, pace), so she can tell when they sound different. */
+  voiceBaseline: VoiceBaseline
+  /** Minutes per app per hour of the week, to learn their routines (on this PC). */
+  usage: Usage
+  /** What she has learned about how to react to them (src/core/learn.ts). */
+  learn: unknown
 }
 
 export const DEFAULT_SETTINGS: Settings = {
@@ -74,6 +158,7 @@ export const DEFAULT_SETTINGS: Settings = {
   streamSafe: false,
   gamingIsWork: false,
   voiceMuted: false,
+  emotionalAttachment: false,
   checkInMinutes: 12,
   focusMinutes: 25,
   breakMinutes: 5,
@@ -84,7 +169,12 @@ export const DEFAULT_SETTINGS: Settings = {
     distraction: ['youtube', 'instagram', 'netflix', 'reddit', 'twitter', ' x ', 'facebook', 'tiktok', 'prime video',
       'hotstar', 'twitch', 'discord', 'steam', 'epic games', 'valorant', 'minecraft', 'spotify', 'whatsapp', 'telegram']
   },
-  onboarded: false
+  onboarded: false,
+  eyesEnabled: true,
+  eyesPlanner: 'auto',
+  privacyShield: true,
+  screenSense: true,
+  batterySaver: false
 }
 
 export const EMPTY_MEMORY: MemoryData = {
@@ -95,7 +185,13 @@ export const EMPTY_MEMORY: MemoryData = {
   turns: [],
   summary: '',
   streak: { days: 0, lastDay: '', sessionsToday: 0, sessionsTotal: 0 },
-  focus: null
+  focus: null,
+  affect: null,
+  followUps: [],
+  moodLog: [],
+  voiceBaseline: { energy: 0, pitchHz: 0, pitchVar: 0, rate: 0, n: 0 },
+  usage: { apps: {}, days: {} },
+  learn: null
 }
 
 // The surface the preload script exposes on window.manyaki.
@@ -121,6 +217,8 @@ export interface Bridge {
   wipeMemory(): Promise<void>
   exportMemory(): Promise<string | null>
   notify(title: string, body: string): void
+  /** Save one of her angry letters to Desktop\Letters from Manyaki; a notification opens it. */
+  writeLetter(fileName: string, body: string): Promise<{ ok: boolean; path?: string; error?: string }>
   openSettings(): void
   /** Open the Home control window. */
   openHome(): void
@@ -135,6 +233,18 @@ export interface Bridge {
     chat(system: string, history: { role: 'user' | 'her'; text: string }[], text: string, teach?: boolean): Promise<LocalReply>
     transcribe(audio: Float32Array): Promise<{ text: string; ms: number }>
     tts(text: string, voice: string): Promise<{ samples: Float32Array; rate: number; ms: number }>
+    /** GoEmotions scores (28 labels) per text from the on-device classifier, or null if it isn't available. */
+    emotion(texts: string[]): Promise<{ scores: Record<string, number>[]; ms: number } | null>
+  }
+  /** Desktop control: windows, apps' controls, keys, mouse, screen. */
+  desk: DeskBridge
+  /** Browser agent (Manyaki Eyes): queue a task for the extension, read the server's state. */
+  eyes: {
+    task(text: string): Promise<boolean>
+    info(): Promise<EyesInfo>
+    newPairing(): Promise<EyesInfo>
+    /** Opens the folder to "Load unpacked" from. Resolves with the path (or why it failed). */
+    openExtensionFolder(): Promise<string>
   }
   /** Send a command to her (from the Home window). */
   sendCommand(cmd: Command): void
@@ -155,6 +265,8 @@ export interface Bridge {
   on(channel: 'status', cb: (s: Status) => void): () => void
   on(channel: 'tab', cb: (tab: string) => void): () => void
   on(channel: 'local-status', cb: (s: LocalStatus) => void): () => void
+  on(channel: 'eyes', cb: (e: EyesEventMsg) => void): () => void
+  on(channel: 'glance', cb: (g: Glance | null) => void): () => void
 }
 
 export interface LocalStatus {
@@ -179,6 +291,20 @@ export interface Status {
   timer: { kind: 'focus' | 'break'; endsAt: number; minutes: number } | null
   activity: string             // "VS Code (work)"
   lastLine: string             // what she last said
+  /** Her inner state for the Home window's mood card. */
+  heart: {
+    bond: number               // 0..100
+    bondLabel: string
+    energy: number             // 0..1
+    pleasure: number           // -1..1
+    arousal: number            // -1..1
+    feeling: string            // her resting emotion
+    youSeem: string            // how the user last seemed ('' when unsure)
+    trend: string              // e.g. "stressed 4 of the last 7 days"
+    lessons: number            // moments she has learned from (how you responded to her reactions)
+  }
+  /** Browser agent (Manyaki Eyes) activity, when the extension is connected. */
+  eyes: { connected: boolean; task: string; step: string; redactions: number } | null
 }
 
 export type Command =

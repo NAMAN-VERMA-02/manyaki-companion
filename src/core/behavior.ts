@@ -2,7 +2,7 @@ import type { ActivitySnapshot, DisplayInfo } from '../../shared/types'
 import type { Avatar } from './avatar'
 import type { Motion } from './anim/motion'
 import type { Layers } from './anim/layers'
-import type { Emotion, Expressions } from './expressions'
+import { faceInfo, type Emotion, type Expressions } from './expressions'
 import type { Emotes, Squash } from './fx'
 import type { Laptop } from './laptop'
 
@@ -55,6 +55,9 @@ export class Behavior {
   cursorMovedAt = -1e9
   private glanceT = 0
   private glance = { x: 0, y: 0 }
+  private convLean = 0
+  private convTilt = 0
+  private moodT = 0
   hoverSince = 0
   onLanded?: (hard: boolean) => void
   squash?: Squash
@@ -145,16 +148,25 @@ export class Behavior {
       if (this.sleeping) this.wake()
       if (this.mode === 'walk') this.toStand()
     }
-    this.layers.lean = c === 'listening' ? 5 : 0
-    this.layers.tilt = c === 'listening' ? 6 : c === 'thinking' ? -5 : 0
+    this.convLean = c === 'listening' ? 5 : 0
+    this.convTilt = c === 'listening' ? 6 : c === 'thinking' ? -5 : 0
     if (this.mode === 'stand') this.applyIdleClip()
   }
 
-  setMood(e: Emotion) {
+  setMood(e: Emotion, intensity = 1) {
     this.mood = e
-    this.face.set(e)
-    this.idleClip = e === 'happy' || e === 'excited' ? 'idleHappy' : e === 'shy' ? 'shy' : e === 'pout' ? 'pout' : 'idle'
+    this.face.set(e, 0, intensity)
+    this.idleClip = faceInfo(e).idle
     if (this.mode === 'stand') this.applyIdleClip()
+  }
+
+  /** Her slow background mood (from the affect engine): a subtle resting face and a fitting idle loop. */
+  setRestMood(e: Emotion, intensity: number) {
+    this.face.setBase(e, intensity)
+    if (this.mood === e) return
+    this.mood = e
+    this.idleClip = faceInfo(e).idle
+    if (this.mode === 'stand' && this.conv === 'none') this.applyIdleClip()
   }
 
   /** Play a gesture. Held actions (dance, think, shy, pout) last `holdMs`. */
@@ -231,7 +243,7 @@ export class Behavior {
    * The "do something on the computer" routine: she stops, pulls out her little laptop, types while
    * `work` runs, shows the result on its screen and puts it away.
    */
-  async useLaptop(laptop: Laptop, label: string, icon: string, work: () => Promise<boolean>): Promise<boolean> {
+  async useLaptop(laptop: Laptop, label: string, icon: string, work: () => Promise<boolean>, doneFace: Emotion = 'happy'): Promise<boolean> {
     if (this.sleeping) this.wake()
     if (this.mode === 'walk' || this.mode === 'sit') this.toStand()
     const canAnimate = !this.isBusy && !laptop.busy
@@ -242,16 +254,16 @@ export class Behavior {
     this.layers.lookWeight = 0.2
     this.motion.play('typing', { fade: 0.25 })
     laptop.begin(label, icon)
-    this.emotes.pop('sparkle')
+    this.emotes.pop(doneFace === 'happy' ? 'sparkle' : 'anger')
     // Let the pop-in and lid animation play before the real work, so it reads as cause and effect.
     const [ok] = await Promise.all([work().catch(() => false), new Promise((r) => setTimeout(r, 1300))])
     laptop.finish(ok)
-    this.face.set(ok ? 'happy' : 'worried', 2500)
+    this.face.set(ok ? doneFace : 'worried', 2500)
     await new Promise((r) => setTimeout(r, 1100))
     this.usingLaptop = false
     this.layers.lookWeight = 1
     if (token === this.actToken && this.mode === 'act') {
-      if (ok) void this.act('nod')
+      if (ok) void this.act(doneFace === 'happy' ? 'nod' : 'pout')
       else this.toStand()
     }
     return ok
@@ -435,8 +447,21 @@ export class Behavior {
     const sitting = this.mode === 'sit' || this.mode === 'sleep' || this.mode === 'act'
     this.avatar.setFeet(this.x, this.y + (sitting && edge ? this.hipsPx * 0.92 : sitting && ground ? this.hipsPx * 0.55 : 0))
 
+    // Body language from her face: tilt and lean add to the conversation pose.
+    const pose = this.face.pose
+    this.layers.lean = this.convLean + pose.lean
+    this.layers.tilt = this.convTilt + pose.tilt
+    // Some emotions make her look away (shy, jealous, lonely); she peeks back every few seconds.
+    this.moodT += dt
+    const peek = Math.sin(this.moodT * 0.8) > 0.75
+    const awayX = peek ? 0 : pose.glanceX * this.avatar.heightPx * 2 * (this.facing < 0 ? -1 : 1)
+    const awayY = peek ? 0 : pose.glanceY * this.avatar.heightPx * 2
+
     // Gaze: whoever is talking to her gets eye contact; otherwise she follows the cursor.
-    if (this.conv !== 'none') {
+    if (awayX || awayY) {
+      this.layers.target.x = this.x + awayX
+      this.layers.target.y = this.y - this.avatar.heightPx * 0.9 + awayY
+    } else if (this.conv !== 'none') {
       this.layers.target.x = this.x
       this.layers.target.y = this.y - this.avatar.heightPx * 0.9
     } else if (performance.now() - this.cursorMovedAt < 15000) {

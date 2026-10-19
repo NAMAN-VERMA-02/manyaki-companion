@@ -1,0 +1,57 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Campusly · Feed</title>
+<meta name="eyes-task" content="Like the post about the hackathon" />
+<meta name="eyes-success" content="title:Liked" />
+<style>
+  body { margin: 0; font: 15px/1.5 system-ui, sans-serif; background: #f2f0fb; color: #221d33; }
+  header { padding: 14px 28px; background: #5b3cc4; color: #fff; font-weight: 700; }
+  main { max-width: 720px; margin: 24px auto; padding: 0 16px; }
+  .post { background: #fff; border-radius: 14px; padding: 16px 18px; margin-bottom: 16px; box-shadow: 0 2px 10px rgba(0,0,0,.06); }
+  .who { font-weight: 700; }
+  .meta { color: #6d6585; font-size: 13px; }
+  button { padding: 6px 14px; border-radius: 999px; border: 1px solid #cfc6ee; background: #f6f3ff; font: 600 13px system-ui; cursor: pointer; }
+  .poster { position: relative; margin-top: 10px; }
+  canvas { width: 100%; height: 160px; display: block; border-radius: 10px; }
+  .truth { position: absolute; }
+</style>
+</head>
+<body>
+<header>Campusly</header>
+<main>
+  <article class="post">
+    <div class="who">Posted by <span data-truth="NAME">Meera Krishnan</span></div>
+    <div class="meta">2 h · Computer Science, 3rd year</div>
+    <p>Our team made it to the finals of the CodeX hackathon! 🎉 DM me or mail <span data-truth="EMAIL">meera.k@example.edu</span> if you want to join next time.</p>
+    <button id="like1" data-truth-ui="Like">♡ Like</button> <button>Comment</button>
+  </article>
+  <article class="post">
+    <div class="who">Posted by <span data-truth="NAME">Arjun Malhotra</span></div>
+    <div class="meta">5 h · Placement cell</div>
+    <p>Selling my old DSA books. Price ₹350 for the set, version 2.1.0.4 notes included. Server status page: build 10.2.0.1.</p>
+    <div class="poster">
+      <canvas id="poster" width="680" height="160"></canvas>
+      <!-- Where the canvas draws the phone number: text that exists only in pixels. -->
+      <span class="truth" data-truth="PHONE" style="left:24px;top:92px;width:240px;height:34px"></span>
+    </div>
+    <button>♡ Like</button> <button>Comment</button>
+  </article>
+  <article class="post">
+    <div class="who">Posted by Campus Admin</div>
+    <p>Library hours change from Monday. Lab results are posted on the notice board, roll numbers 21CS001 to 21CS120.</p>
+    <button>♡ Like</button>
+  </article>
+</main>
+<script>
+  const c = document.getElementById('poster').getContext('2d')
+  c.fillStyle = '#ffe9a8'; c.fillRect(0, 0, 680, 160)
+  c.fillStyle = '#3a2c00'; c.font = 'bold 30px system-ui'; c.fillText('BOOKS FOR SALE', 24, 52)
+  c.font = 'bold 28px system-ui'; c.fillText('98200 11223', 24, 120)
+  c.font = '20px system-ui'; c.fillText('call after 6 pm', 300, 118)
+  document.getElementById('like1').addEventListener('click', (e) => { e.target.textContent = '♥ Liked'; document.title = 'Liked' })
+</script>
+</body>
+</html>

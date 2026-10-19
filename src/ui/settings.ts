@@ -28,12 +28,18 @@ function fill(s: Settings) {
   $<HTMLInputElement>('launch').checked = s.launchAtLogin
   $<HTMLInputElement>('dnd').checked = s.dnd
   $<HTMLInputElement>('muted').checked = s.voiceMuted
+  $<HTMLInputElement>('emotionalAttachment').checked = s.emotionalAttachment
   for (const r of document.querySelectorAll<HTMLInputElement>('input[name=brain]')) r.checked = r.value === s.brainMode
   $<HTMLInputElement>('gamingwork').checked = s.gamingIsWork
   $<HTMLInputElement>('streamsafe').checked = s.streamSafe
   $<HTMLInputElement>('titles').checked = s.shareTitles
   $<HTMLTextAreaElement>('work').value = s.categoryRules.work.join(', ')
   $<HTMLTextAreaElement>('distraction').value = s.categoryRules.distraction.join(', ')
+  $<HTMLInputElement>('eyesEnabled').checked = s.eyesEnabled
+  $<HTMLSelectElement>('eyesPlanner').value = s.eyesPlanner
+  $<HTMLInputElement>('privacyShield').checked = s.privacyShield
+  $<HTMLInputElement>('screenSense').checked = s.screenSense
+  $<HTMLInputElement>('batterySaver').checked = s.batterySaver
 }
 
 function renderMemory(m: MemoryData) {
@@ -107,9 +113,15 @@ async function init() {
   $<HTMLInputElement>('launch').onchange = (e) => save({ launchAtLogin: (e.target as HTMLInputElement).checked })
   $<HTMLInputElement>('dnd').onchange = (e) => save({ dnd: (e.target as HTMLInputElement).checked })
   $<HTMLInputElement>('muted').onchange = (e) => save({ voiceMuted: (e.target as HTMLInputElement).checked })
+  $<HTMLInputElement>('emotionalAttachment').onchange = (e) => save({ emotionalAttachment: (e.target as HTMLInputElement).checked })
   for (const r of document.querySelectorAll<HTMLInputElement>('input[name=brain]')) r.onchange = () => save({ brainMode: r.value as Settings['brainMode'] })
   $<HTMLInputElement>('gamingwork').onchange = (e) => save({ gamingIsWork: (e.target as HTMLInputElement).checked })
   $<HTMLInputElement>('streamsafe').onchange = (e) => save({ streamSafe: (e.target as HTMLInputElement).checked })
+  $<HTMLInputElement>('privacyShield').onchange = (e) => save({ privacyShield: (e.target as HTMLInputElement).checked })
+  $<HTMLInputElement>('screenSense').onchange = (e) => save({ screenSense: (e.target as HTMLInputElement).checked })
+  $<HTMLInputElement>('batterySaver').onchange = (e) => save({ batterySaver: (e.target as HTMLInputElement).checked })
+  $<HTMLInputElement>('eyesEnabled').onchange = (e) => save({ eyesEnabled: (e.target as HTMLInputElement).checked })
+  $<HTMLSelectElement>('eyesPlanner').onchange = (e) => save({ eyesPlanner: (e.target as HTMLSelectElement).value as Settings['eyesPlanner'] })
   const renderLocal = (st: LocalStatus | null) => {
     const el = $('local-state')
     const btn = $<HTMLButtonElement>('local-download')

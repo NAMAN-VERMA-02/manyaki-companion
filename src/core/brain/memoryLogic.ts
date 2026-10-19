@@ -2,7 +2,8 @@ import type { Fact, Goal, MemoryData, Turn } from '../../../shared/types'
 
 // Pure helpers for memory, kept free of Electron/DOM so they are unit-tested directly.
 
-export const MAX_FACTS = 50
+// Bullets stay on this PC and only matching ones are ever used, so she can keep many more.
+export const MAX_FACTS = 300
 export const MAX_TURNS = 40
 
 export function dayKey(d = new Date()): string {

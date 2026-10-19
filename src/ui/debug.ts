@@ -1,13 +1,12 @@
 import type { Stage } from '../stage'
 import { ACTIONS, type Action } from '../core/behavior'
-import type { Emotion } from '../core/expressions'
+import { EMOTIONS } from '../core/expressions'
 import { EMOTES } from '../core/fx'
 
 /** Developer panel (run with --manyaki-debug): trigger every clip/expression, watch fps and latency. */
 export function mountDebug(stage: Stage, extra: { label: string; run: () => void }[], stats: () => string) {
   const el = document.getElementById('debug')!
   el.classList.remove('hidden')
-  const emotions: Emotion[] = ['neutral', 'happy', 'excited', 'sad', 'worried', 'angry', 'pout', 'surprised', 'relaxed', 'shy', 'smug', 'sleepy']
   const section = (title: string, items: [string, () => void][]) => {
     const h = document.createElement('h4')
     h.textContent = title
@@ -23,7 +22,8 @@ export function mountDebug(stage: Stage, extra: { label: string; run: () => void
     stage.motion.play(n)
   }]))
   section('actions', ACTIONS.map((a) => [a, () => void stage.body.act(a as Action)]))
-  section('emotions', emotions.map((e) => [e, () => stage.body.setMood(e)]))
+  section('emotions', EMOTIONS.map((e) => [e, () => stage.body.setMood(e)]))
+  section('emotions (soft)', EMOTIONS.filter((e) => e !== 'neutral').map((e) => [`${e} 40%`, () => stage.body.setMood(e, 0.4)]))
   section('emotes', EMOTES.map((e) => [e, () => stage.emotes.pop(e)]))
   section('body', [
     ['walk left', () => stage.body.walkTo(100)],

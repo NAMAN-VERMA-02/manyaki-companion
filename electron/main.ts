@@ -7,6 +7,9 @@ import type { Command, DisplayInfo, Settings } from '../shared/types'
 import { startActivityWatcher } from './activity'
 import * as store from './store'
 import { runAction, type ActionKind } from './actions'
+import { eyesInfo, eyesTask, newPairingCode, setEyesProvider, startEyes, stopEyes } from './eyes'
+import * as desk from './desk'
+import type { ActivitySnapshot, WindowOp } from '../shared/types'
 
 // ---------- offline brain (utility process) ----------
 let brain: ChildProcess | null = null
@@ -198,6 +201,24 @@ function openHome(tab: 'home' | 'settings' = 'home', inactive = false) {
 const openSettings = () => openHome('settings')
 
 let iconCache: Electron.NativeImage | null = null
+/** Saves one of her angry letters into a folder on the Desktop and shows a notification that opens it. */
+function writeLetter(fileName: string, body: string): string {
+  const dir = join(app.getPath('desktop'), 'Letters from Manyaki')
+  mkdirSync(dir, { recursive: true })
+  // Only a plain .txt name inside that folder: no paths, no other extensions.
+  const base = fileName.replace(/[\\/:*?"<>|\x00-\x1f]/g, '').replace(/\.txt$/i, '').trim().slice(0, 90) || 'A letter'
+  let path = join(dir, `${base}.txt`)
+  for (let i = 2; existsSync(path); i++) path = join(dir, `${base} (${i}).txt`)
+  writeFileSync(path, '﻿' + body.slice(0, 6000).replace(/\r?\n/g, '\r\n'), 'utf8')
+  log('info', `letter written (${body.length} chars)`)
+  if (Notification.isSupported()) {
+    const n = new Notification({ title: 'Manyaki left you a letter 😭', body: 'Hmph. Click to read it.', icon: appIcon(128) })
+    n.on('click', () => void shell.openPath(path))
+    n.show()
+  }
+  return path
+}
+
 function appIcon(size: number) {
   if (!iconCache) iconCache = nativeImage.createFromPath(join(assetsRoot(), 'icon.png'))
   return iconCache.resize({ width: size, height: size, quality: 'best' })
@@ -211,47 +232,55 @@ const command = (cmd: Command) => overlay?.webContents.send('command', cmd)
 /** Her control menu: shown from the tray icon and when you right-click her. */
 function controlMenu(): Menu {
   const s = store.getSettings()
+  // Kept short on purpose: the few things people reach for, plus one "More" for everything else.
   return Menu.buildFromTemplate([
     { label: 'Manyaki 💗', enabled: false },
-    { label: '🏠 Open Manyaki Home', click: () => openHome('home') },
+    { label: '💬 Talk to her  (Ctrl+Alt+Space)', click: () => command({ type: 'toggle-listen' }) },
+    { label: '⌨️ Type a message', click: () => command({ type: 'chat' }) },
+    { label: '🛡️ Privacy shield (hide my private details)', type: 'checkbox', checked: s.privacyShield, click: (i) => applySettings({ privacyShield: i.checked }) },
+    { label: '🌙 Do not disturb', type: 'checkbox', checked: s.dnd, click: (i) => applySettings({ dnd: i.checked }) },
+    { label: '🙈 Hide for 30 minutes', click: () => command({ type: 'hide', minutes: 30 }) },
+    { label: '🏠 Open Home', click: () => openHome('home') },
     { type: 'separator' },
-    { label: 'Talk to her  (Ctrl+Alt+Space)', click: () => command({ type: 'toggle-listen' }) },
-    { label: 'Type a message…', click: () => command({ type: 'chat' }) },
-    { label: '👀 Look at my screen  (Ctrl+Alt+E)', click: () => command({ type: 'look' }) },
     {
-      label: 'Microphone',
-      submenu: (['handsfree', 'toggle', 'off'] as const).map((m) => ({
-        label: { handsfree: 'Hands-free (she hears you speak)', toggle: 'Only when I press Ctrl+Alt+Space', off: 'Off (typing only)' }[m],
-        type: 'radio' as const,
-        checked: s.micMode === m,
-        click: () => applySettings({ micMode: m })
-      }))
+      label: 'More',
+      submenu: [
+        {
+          label: 'Microphone',
+          submenu: (['handsfree', 'toggle', 'off'] as const).map((m) => ({
+            label: { handsfree: 'Hands-free (she hears you speak)', toggle: 'Only when I press Ctrl+Alt+Space', off: 'Off (typing only)' }[m],
+            type: 'radio' as const,
+            checked: s.micMode === m,
+            click: () => applySettings({ micMode: m })
+          }))
+        },
+        { label: 'Fix microphone (Windows privacy)…', click: () => void shell.openExternal('ms-settings:privacy-microphone') },
+        { label: 'Mute her voice (text bubble only)', type: 'checkbox', checked: s.voiceMuted, click: (i) => applySettings({ voiceMuted: i.checked }) },
+        { label: '👀 She can see my screen', type: 'checkbox', checked: s.screenSense, click: (i) => applySettings({ screenSense: i.checked }) },
+        { label: '💞 Emotional attachment (sulks, cries, letters)', type: 'checkbox', checked: s.emotionalAttachment, click: (i) => applySettings({ emotionalAttachment: i.checked }) },
+        { type: 'separator' },
+        { label: `Start focus (${s.focusMinutes} min)`, click: () => command({ type: 'focus-start' }) },
+        { label: 'Stop focus', click: () => command({ type: 'focus-stop' }) },
+        { type: 'separator' },
+        { label: '🎥 Stream-safe mode', type: 'checkbox', checked: s.streamSafe, click: (i) => applySettings({ streamSafe: i.checked }) },
+        { label: '🔋 Battery saver (less smooth)', type: 'checkbox', checked: s.batterySaver, click: (i) => applySettings({ batterySaver: i.checked }) },
+        { label: 'Send her to the corner', click: () => command({ type: 'corner' }) },
+        { label: '🔄 Reset her position', click: () => command({ type: 'reset' }) },
+        {
+          label: 'Size',
+          submenu: [180, 220, 260, 320, 400].map((px) => ({
+            label: { 180: 'Tiny', 220: 'Small', 260: 'Medium', 320: 'Large', 400: 'Huge' }[px]!,
+            type: 'radio' as const,
+            checked: s.size === px,
+            click: () => applySettings({ size: px })
+          }))
+        },
+        { type: 'separator' },
+        { label: 'Settings…', click: openSettings },
+        { label: 'Launch at login', type: 'checkbox', checked: s.launchAtLogin, click: (i) => applySettings({ launchAtLogin: i.checked }) },
+        { label: 'Open log folder', click: () => shell.showItemInFolder(logFile()) }
+      ]
     },
-    { label: 'Fix microphone (Windows privacy)…', click: () => void shell.openExternal('ms-settings:privacy-microphone') },
-    { label: 'Mute her voice (text bubble only)', type: 'checkbox', checked: s.voiceMuted, click: (i) => applySettings({ voiceMuted: i.checked }) },
-    { label: 'Hide her for 30 minutes', click: () => command({ type: 'hide', minutes: 30 }) },
-    { type: 'separator' },
-    { label: `Start focus (${s.focusMinutes} min)`, click: () => command({ type: 'focus-start' }) },
-    { label: 'Stop focus', click: () => command({ type: 'focus-stop' }) },
-    { type: 'separator' },
-    { label: 'Do not disturb', type: 'checkbox', checked: s.dnd, click: (i) => applySettings({ dnd: i.checked }) },
-    { label: '🎥 Stream-safe mode', type: 'checkbox', checked: s.streamSafe, click: (i) => applySettings({ streamSafe: i.checked }) },
-    { label: 'Send her to the corner', click: () => command({ type: 'corner' }) },
-    { label: '🔄 Reset her position', click: () => command({ type: 'reset' }) },
-    {
-      label: 'Size',
-      submenu: [180, 220, 260, 320, 400].map((px) => ({
-        label: { 180: 'Tiny', 220: 'Small', 260: 'Medium', 320: 'Large', 400: 'Huge' }[px]!,
-        type: 'radio' as const,
-        checked: s.size === px,
-        click: () => applySettings({ size: px })
-      }))
-    },
-    { type: 'separator' },
-    { label: 'Settings…', click: openSettings },
-    { label: 'Launch at login', type: 'checkbox', checked: s.launchAtLogin, click: (i) => applySettings({ launchAtLogin: i.checked }) },
-    { label: 'Open log folder', click: () => shell.showItemInFolder(logFile()) },
-    { type: 'separator' },
     { label: 'Quit', click: () => app.quit() }
   ])
 }
@@ -266,8 +295,44 @@ function buildTray() {
   tray.setContextMenu(menu)
 }
 
+/** Start (or stop) her browser-agent server to match the settings. */
+async function syncEyes() {
+  const s = store.getSettings()
+  if (!s.eyesEnabled) { await stopEyes(); return }
+  const info = await startEyes({
+    settings: s,
+    geminiKey: store.getApiKey(),
+    pairing: store.getEyesPairing(newPairingCode),
+    appPath: app.getAppPath(),
+    onEvent: (e) => send('eyes', e),
+    log
+  })
+  log('info', `eyes server ${info.running ? `on :${info.port}` : `off (${info.error})`}`)
+}
+
+// ---------- screen sense: she always knows what's in front (on-device, redacted, memory only) ----------
+let lastActivity: ActivitySnapshot | null = null
+let lastGlanceKey = ''
+function startSenseLoop() {
+  setInterval(async () => {
+    const s = store.getSettings()
+    if (!s.screenSense || s.dnd || !lastActivity || lastActivity.category === 'self') return
+    const g = await desk.senseOnce({ idleSeconds: lastActivity.idleSeconds, fullscreen: lastActivity.fullscreen })
+    const key = g ? `${g.at}` : ''
+    if (key && key !== lastGlanceKey) {
+      lastGlanceKey = key
+      overlay?.webContents.send('glance', g)
+      if (g) log('info', `glance: ${g.private ? 'private window' : `${g.app}, ${g.lines.length} lines`}${g.error ? ', error on screen' : ''}`)
+    }
+  }, 5000)
+}
+
 function applySettings(patch: Partial<Settings>): Settings {
   const next = store.setSettings(patch)
+  if ('privacyShield' in patch) desk.setShield(next.privacyShield)
+  if ('screenSense' in patch && !next.screenSense) { desk.clearGlance(); overlay?.webContents.send('glance', null) }
+  if ('eyesEnabled' in patch) void syncEyes()
+  else if ('eyesPlanner' in patch) setEyesProvider(next, store.getApiKey())
   if ('launchAtLogin' in patch && app.isPackaged) app.setLoginItemSettings({ openAtLogin: next.launchAtLogin })
   send('settings', next)
   buildTray()
@@ -298,8 +363,46 @@ function registerIpc() {
   ipcMain.handle('key:set', (_e, key: string) => {
     const ok = store.setApiKey(key)
     log('warn', `api key ${key.trim() ? 'saved' : 'cleared'} (ok=${ok}, length ${key.trim().length})`)
-    if (ok) command({ type: 'reload-key' })
+    if (ok) {
+      command({ type: 'reload-key' })
+      setEyesProvider(store.getSettings(), store.getApiKey())
+    }
     return ok
+  })
+  // Desktop hands: only her own windows may drive them.
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const deskOp = <A extends any[]>(name: string, f: (...a: A) => Promise<unknown>) =>
+    ipcMain.handle(`desk:${name}`, async (e, ...args) => {
+      if (!fromOurWindow(e.sender)) return 'not allowed'
+      try { return await f(...(args as A)) } catch (err) { log('warn', `desk ${name}: ${(err as Error).message}`); return `failed: ${(err as Error).message}` }
+    })
+  deskOp('windows', () => desk.listWindows())
+  deskOp('window', (q: string, op: WindowOp) => desk.windowAction(String(q), op))
+  deskOp('close-all', (q: string) => desk.closeAll(String(q)))
+  deskOp('read-app', (q?: string) => desk.readApp(q ? String(q) : undefined))
+  deskOp('press', (id: string) => desk.pressControl(String(id)))
+  deskOp('type-into', (id: string, t: string) => desk.typeInto(String(id), String(t)))
+  deskOp('type', (t: string) => desk.typeText(String(t)))
+  deskOp('keys', (c: string) => desk.pressKeys(String(c)))
+  deskOp('scroll', (d: string, n?: number) => desk.scroll(d === 'up' || d === 'top' || d === 'bottom' ? d : 'down', Number(n) || 3))
+  deskOp('click-text', (t: string, dbl?: boolean) => desk.clickText(String(t), !!dbl))
+  deskOp('see', () => desk.seeScreen())
+  ipcMain.handle('desk:screenshot', async (e) => {
+    if (!fromOurWindow(e.sender)) return { error: 'not allowed' }
+    try { return await desk.screenshotForModel() } catch (err) { return { error: (err as Error).message } }
+  })
+  ipcMain.handle('eyes:task', (e, text: string) => (fromOurWindow(e.sender) ? eyesTask(String(text).slice(0, 500)) : false))
+  ipcMain.handle('eyes:info', () => eyesInfo())
+  ipcMain.handle('eyes:open-extension', async () => {
+    const dir = app.isPackaged ? join(process.resourcesPath, 'eyes', 'extension') : join(app.getAppPath(), 'eyes', 'extension', 'dist')
+    if (!existsSync(join(dir, 'manifest.json'))) return 'not built yet: run npm run eyes:build'
+    return (await shell.openPath(dir)) || dir
+  })
+  ipcMain.handle('eyes:new-pairing', async (e) => {
+    if (!fromOurWindow(e.sender)) return eyesInfo()
+    store.setEyesPairing(newPairingCode())
+    await syncEyes()
+    return eyesInfo()
   })
   ipcMain.handle('settings:get', () => store.getSettings())
   ipcMain.handle('settings:set', (_e, patch: Partial<Settings>) => applySettings(patch))
@@ -339,10 +442,18 @@ function registerIpc() {
   ipcMain.handle('local:chat', (_e, system: string, history: unknown, text: string, teach?: boolean) => askBrain({ type: 'chat', system, history, text, teach }, 120000))
   ipcMain.handle('local:transcribe', (_e, audio: Float32Array) => askBrain({ type: 'transcribe', audio }, 60000))
   ipcMain.handle('local:tts', (_e, text: string, voice: string) => askBrain({ type: 'tts', text, voice }, 60000))
+  ipcMain.handle('local:emotion', (_e, texts: string[]) => askBrain({ type: 'emotion', texts: (Array.isArray(texts) ? texts : []).slice(0, 4).map(String) }, 180000).catch(() => null))
   ipcMain.handle('action:run', async (_e, kind: ActionKind, target: string) => {
     const r = await runAction(kind, target)
     log('info', `action ${kind} "${String(target).slice(0, 60)}" -> ${r.ok ? 'opened' : r.error}`)
     return r
+  })
+  ipcMain.handle('letter:write', (e, fileName: string, body: string) => {
+    if (!fromOurWindow(e.sender)) return { ok: false, error: 'not allowed' }
+    try { return { ok: true, path: writeLetter(String(fileName), String(body)) } } catch (err) {
+      log('warn', `letter: ${(err as Error).message}`)
+      return { ok: false, error: (err as Error).message }
+    }
   })
   ipcMain.on('notify', (_e, title: string, body: string) => {
     if (Notification.isSupported()) new Notification({ title, body, icon: appIcon(128), silent: false }).show()
@@ -393,9 +504,15 @@ app.whenReady().then(() => {
   session.defaultSession.setPermissionRequestHandler((_wc, permission, cb) => cb(permission === 'media' || permission === 'notifications'))
   session.defaultSession.setPermissionCheckHandler((_wc, permission) => permission === 'media' || permission === 'notifications')
 
+  desk.initDesk({ script: join(assetsRoot(), 'desk', 'host.ps1'), log })
+  desk.setShield(store.getSettings().privacyShield)
   registerIpc()
   createOverlay()
   buildTray()
+  void syncEyes()
+  // Warm her hands a few seconds after start so the first request is instant.
+  setTimeout(() => void desk.warmDesk(), 6000)
+  startSenseLoop()
   if (app.isPackaged) app.setLoginItemSettings({ openAtLogin: store.getSettings().launchAtLogin })
 
   globalShortcut.register('Control+Alt+Space', () => command({ type: 'toggle-listen' }))
@@ -413,7 +530,7 @@ app.whenReady().then(() => {
     overlay.webContents.send('cursor', { x: p.x - d.x, y: p.y - d.y })
   }, 50)
 
-  stopActivity = startActivityWatcher(process.pid, (a) => overlay?.webContents.send('activity', a))
+  stopActivity = startActivityWatcher(process.pid, (a) => { lastActivity = a; overlay?.webContents.send('activity', a) })
 
   const onDisplay = () => {
     const info = displayInfo()
@@ -431,7 +548,7 @@ app.whenReady().then(() => {
   log('info', `Manyaki started; data at ${store.storePath()}`)
 })
 
-app.on('before-quit', () => { quitting = true; brain?.kill() })
+app.on('before-quit', () => { quitting = true; brain?.kill(); void stopEyes(); desk.stopDesk() })
 
 app.on('will-quit', () => {
   globalShortcut.unregisterAll()

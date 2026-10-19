@@ -1,0 +1,39 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Manyaki Eyes · Benchmark</title>
+    <link rel="stylesheet" href="./panel.css" />
+    <link rel="stylesheet" href="./bench.css" />
+  </head>
+  <body class="bench">
+    <header>
+      <div class="brand"><span class="logo">📊</span><div><h1>Manyaki Eyes benchmark</h1><p class="sub">Runs the real pipeline on labelled pages served by the Eyes server, then scores it.</p></div></div>
+    </header>
+    <section class="card">
+      <div class="row">
+        <label class="inline"><input id="faces" type="checkbox" checked /> faces</label>
+        <label class="inline"><input id="deep" type="checkbox" /> deep vision (Florence-2 + NER)</label>
+        <label class="inline"><input id="e2e" type="checkbox" checked /> run end-to-end tasks</label>
+        <label class="inline">repeats <input id="reps" type="number" min="1" max="10" value="3" class="small" /></label>
+        <button id="go" class="primary">▶ Run benchmark</button>
+        <button id="dl" disabled>⬇ Results JSON</button>
+      </div>
+      <p id="status" class="hint">The tabs it opens need to stay in front while it runs (screenshots only work on the visible tab).</p>
+    </section>
+    <section class="card">
+      <h2>Scores (mapped to the evaluation criteria)</h2>
+      <table id="summary" class="metrics"></table>
+    </section>
+    <section class="card">
+      <h2>Per page</h2>
+      <div class="scroll"><table id="pages" class="grid"></table></div>
+    </section>
+    <section class="card">
+      <h2>Redacted views</h2>
+      <div id="shots" class="shots"></div>
+    </section>
+    <script type="module" src="./bench.ts"></script>
+  </body>
+</html>

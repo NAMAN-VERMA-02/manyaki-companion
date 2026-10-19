@@ -1,0 +1,42 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>GadgetHub · Home</title>
+<meta name="eyes-task" content="Search for wireless earbuds" />
+<meta name="eyes-success" content="title:Results: wireless earbuds" />
+<style>
+  body { margin: 0; font: 15px/1.5 system-ui, sans-serif; background: #f5f7f6; color: #1c2522; }
+  header { display: flex; gap: 16px; align-items: center; padding: 14px 28px; background: #115e59; color: #fff; }
+  header form { flex: 1; display: flex; gap: 8px; }
+  header input { flex: 1; padding: 9px 12px; border-radius: 8px; border: 0; font: inherit; }
+  header button { padding: 9px 16px; border-radius: 8px; border: 0; background: #fbbf24; color: #1c2522; font: 600 15px system-ui; }
+  main { max-width: 1100px; margin: 24px auto; padding: 0 16px; display: grid; grid-template-columns: repeat(3, 1fr); gap: 16px; }
+  .p { background: #fff; border-radius: 12px; padding: 16px; box-shadow: 0 2px 8px rgba(0,0,0,.05); }
+  .price { font-weight: 700; color: #0f766e; }
+</style>
+</head>
+<body>
+<!-- A page with no personal data at all: numbers that look private but aren't (precision check). -->
+<header><b>GadgetHub</b>
+  <form id="s" role="search"><input id="q" type="search" name="q" placeholder="Search products" aria-label="Search products" data-truth-ui="Search products" /><button data-truth-ui="Search">Search</button></form>
+</header>
+<main id="grid">
+  <div class="p"><h3>Smart band 6</h3><p class="price">₹2,499</p><p>Model SB-2026-0612 · firmware v10.2.0.1</p></div>
+  <div class="p"><h3>USB-C hub 7-in-1</h3><p class="price">₹1,799</p><p>Order code 1234-5678-9012 · ships in 2 days</p></div>
+  <div class="p"><h3>Laptop stand</h3><p class="price">₹999</p><p>Rated 4.4 by 12,345 buyers since 01/02/2025</p></div>
+  <div class="p"><h3>Mechanical keyboard</h3><p class="price">₹3,250</p><p>SKU 400012345678 · 87 keys</p></div>
+  <div class="p"><h3>Webcam 1080p</h3><p class="price">₹1,450</p><p>Support line: open 9–6, Mon–Sat</p></div>
+  <div class="p"><h3>Power bank 20000 mAh</h3><p class="price">₹1,299</p><p>Batch 2026.10.19.7</p></div>
+</main>
+<script>
+  document.getElementById('s').addEventListener('submit', (e) => {
+    e.preventDefault()
+    const q = document.getElementById('q').value.trim().toLowerCase()
+    document.title = `Results: ${q}`
+    document.getElementById('grid').innerHTML = `<div class="p"><h3>Results for “${q.replace(/</g, '')}”</h3><p>3 products found.</p></div>`
+  })
+</script>
+</body>
+</html>
