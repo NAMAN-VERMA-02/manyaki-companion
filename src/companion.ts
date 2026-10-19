@@ -14,6 +14,19 @@ import { EVENT_PREFIX, systemInstruction } from './core/brain/persona'
 import * as mem from './core/brain/memoryLogic'
 import { decideNudge, FocusTimer, OFFLINE_LINES, pick, SULK_AFTER_MIN, type NudgeKind } from './core/motivation'
 import { letterFileName, letterPrompt, offlineLetter, type Letter } from './core/letters'
+import { appraise, bondLabel, describe, restingEmotion, sanitizeAffect, step, type AffectState, type Appraisal } from './core/affect'
+import { empathyHint, fuse, logFeeling, mirrorFor, moodTrend, readText, readVoice, updateBaseline, type Empathy, type UserFeeling, type VoiceRead } from '../shared/empathy'
+import { analyzeUtterance } from '../shared/prosody'
+import { addFollowUp, detectFollowUp, dueFollowUps, followUpEvent, markAsked } from '../shared/followups'
+
+/** How catching their feeling moves her own mood. */
+const CONTAGION: Partial<Record<UserFeeling, Appraisal>> = {
+  happy: 'user-happy', excited: 'user-excited', proud: 'user-proud', grateful: 'thanked', sad: 'user-sad',
+  lonely: 'user-lonely', stressed: 'user-stressed', anxious: 'user-stressed', angry: 'user-angry',
+  frustrated: 'user-stressed', tired: 'user-tired'
+}
+const PRAISE = /\b(good girl|good job manyaki|you('| a)?re (the best|amazing|so cute|cute|smart|adorable|so helpful)|love you|well done|best companion|tum best ho|bahut cute|so sweet)\b/i
+const APOLOGY = /\b(sorry|i apologi[sz]e|my bad|maaf|maafi)\b/i
 
 /**
  * The companion: ties her ears, voice, brain, memory and motivation loop to the body on stage.
@@ -71,6 +84,13 @@ export class Companion implements ToolHost {
   private gameStartAt = 0
   private lastGameEventAt = 0
   private hiddenUntil = 0
+  // her heart: continuous mood + bond (affect.ts), and what she senses about you (empathy.ts)
+  private affect!: AffectState
+  private lastEmpathy: { e: Empathy; at: number } | null = null
+  private pendingVoice: Float32Array | null = null
+  private lastFollowUpAt = 0
+  /** Browser agent (Manyaki Eyes) status, pushed from the main process. */
+  private eyes: Status['eyes'] = null
 
   constructor(private readonly bridge: Bridge, private readonly stage: Stage) {
     const log = (m: string) => bridge.log('warn', m)
@@ -110,6 +130,7 @@ export class Companion implements ToolHost {
     this.settings = await this.bridge.getSettings()
     this.memory = await this.bridge.getMemory()
     this.memory.goals = mem.rolloverGoals(this.memory.goals)
+    this.affect = sanitizeAffect(this.memory.affect)
     if (this.memory.focus && this.memory.focus.endsAt > Date.now()) {
       this.timer.state = { ...this.memory.focus }
       this.stage.body.focus = this.memory.focus.kind === 'focus'
@@ -132,6 +153,7 @@ export class Companion implements ToolHost {
     setInterval(() => this.timer.tick(), 1000)
     setInterval(() => this.considerNudge(), 20000)
     setInterval(() => this.reportStatus(), 1000)
+    setInterval(() => this.ambient(), 4000)
     // If the mic was blocked (Windows privacy switch, device unplugged), keep retrying quietly.
     setInterval(() => { if (this.micError && !this.mic.enabled) void this.syncMic().then(() => { if (this.mic.enabled) { this.micError = ''; this.stage.chip.set('I can hear you now! 👂', '', 3000) } }) }, 15000)
     window.addEventListener('online', () => this.stage.chip.set('back online ✨', '', 2500))
@@ -196,8 +218,25 @@ export class Companion implements ToolHost {
       target: 'cloud',
       homeDir: this.bridge.homeDir,
       streamSafe: this.settings.streamSafe,
-      playful: this.settings.emotionalAttachment
+      playful: this.settings.emotionalAttachment,
+      ...this.heartContext()
     })
+  }
+
+  /** Her mood, how they seem, the week's trend and what's coming up, for the brain's instructions. */
+  private heartContext() {
+    const recent = this.lastEmpathy && Date.now() - this.lastEmpathy.at < 4 * 60000 ? empathyHint(this.lastEmpathy.e) : ''
+    const t = moodTrend(this.memory.moodLog)
+    const today = mem.dayKey()
+    const upcoming = this.memory.followUps
+      .filter((f) => f.stage !== 'done' && f.dueDay >= today)
+      .map((f) => `${f.about} on ${f.dueDay === today ? 'today' : f.dueDay}`)
+    return {
+      heart: describe(this.affect),
+      empathy: recent,
+      trend: t ? `${t.feeling} on ${t.days} of the last 7 days` : '',
+      upcoming
+    }
   }
 
   // ---------------- brain routing ----------------
@@ -249,7 +288,9 @@ export class Companion implements ToolHost {
     const focus = this.timer.state ? `${this.timer.state.kind} timer ${Math.round(this.timer.remainingMs() / 60000)} min left` : 'no timer'
     const app = this.activity && this.activity.category !== 'self' ? `they are in ${sanitizeUntrusted(this.activity.label, 30)}` : ''
     const goals = this.memory.goals.filter((g) => !g.done).length
-    return `[${[t, focus, app, `${goals} open goals`].filter(Boolean).join('; ')}]`
+    const h = this.heartContext()
+    const seem = h.empathy ? `they seem: ${h.empathy}` : ''
+    return `[${[t, focus, app, `${goals} open goals`, `you feel ${describe(this.affect).split(';')[0]}`, seem].filter(Boolean).join('; ')}]`
   }
 
   /** One turn with the offline brain: hear (Whisper), act on clear requests, think (Qwen), speak. */
@@ -269,6 +310,7 @@ export class Companion implements ToolHost {
         this.lastUserInputAt = Date.now()
         this.stage.bubble.show(text, { you: true, holdMs: 0 })
         this.memory.turns = mem.addTurn(this.memory.turns, { role: 'user', text, at: Date.now() - 1 })
+        if (input.audio) this.perceiveUser(text, input.audio, true) // typed text was read in sendTyped
       }
       if (this.localStatus?.llm !== 'loaded') this.stage.chip.set('waking up my offline brain… 🧠', '', 30000)
       await this.localWarm
@@ -351,6 +393,8 @@ export class Companion implements ToolHost {
 
   private onSpeechEnd(audio?: Float32Array) {
     this.stage.chip.set('')
+    // Kept until the words arrive (Live transcription), then read together for how they feel.
+    this.pendingVoice = audio ?? null
     this.speechEndAt = performance.now()
     this.firstAudioMs = 0
     if (this.settings.micMode === 'toggle') { this.toggleListening = false; void this.syncMic() }
@@ -405,6 +449,9 @@ export class Companion implements ToolHost {
     if (this.userText.trim()) {
       this.memory.turns = mem.addTurn(this.memory.turns, { role: 'user', text: this.userText.trim(), at: now - 1 })
       this.userTurnsSinceDistill++
+      // Live hears their tone itself; here it updates her mood, the mood log and follow-ups.
+      this.perceiveUser(this.userText.trim(), this.pendingVoice ?? undefined, false)
+      this.pendingVoice = null
     }
     if (this.herText.trim()) this.memory.turns = mem.addTurn(this.memory.turns, { role: 'her', text: this.herText.trim(), at: now })
     this.userText = ''
@@ -468,6 +515,7 @@ export class Companion implements ToolHost {
       if (heard && !input.event) {
         this.memory.turns = mem.addTurn(this.memory.turns, { role: 'user', text: heard, at: Date.now() - 1 })
         this.userTurnsSinceDistill++
+        if (!input.text) this.perceiveUser(heard, input.audio, false) // typed text was read in sendTyped
       }
       if (r.text) {
         this.memory.turns = mem.addTurn(this.memory.turns, { role: 'her', text: r.text, at: Date.now() })
@@ -535,6 +583,7 @@ export class Companion implements ToolHost {
     this.timer.start('focus', minutes)
     this.memory.focus = { ...this.timer.state! }
     this.stage.body.focus = true
+    this.feel('focus-start')
     this.saveMemory()
     this.bridge.log('info', `focus started ${minutes}m`)
     return `focus timer started for ${minutes} minutes`
@@ -560,6 +609,7 @@ export class Companion implements ToolHost {
     const r = mem.completeGoal(this.memory.goals, which)
     if (!r.done) return 'no matching open goal'
     this.memory.goals = r.goals
+    this.feel('goal-done')
     this.saveMemory()
     this.stage.emotes.pop('party')
     void this.stage.body.act('clap')
@@ -662,7 +712,75 @@ export class Companion implements ToolHost {
 
   private saveMemory() {
     clearTimeout(this.saveTimer)
-    this.saveTimer = window.setTimeout(() => void this.bridge.setMemory(this.memory), 800)
+    this.saveTimer = window.setTimeout(() => {
+      this.memory.affect = this.affect
+      void this.bridge.setMemory(this.memory)
+    }, 800)
+  }
+
+  // ---------------- heart: empathy, mood, bond ----------------
+
+  /** Something happened that moves her mood (and maybe your bond). */
+  private feel(kind: Appraisal, k = 1) {
+    if (!this.affect) return
+    this.affect = appraise(this.affect, kind, k)
+    this.saveMemory()
+  }
+
+  /**
+   * They said something (typed, or spoken with the utterance audio). Read how they feel from their words
+   * and their voice compared with their usual voice, all on this PC; catch a little of it; note upcoming
+   * events to follow up on. `mirror`: show a quick matching face now, before her reply arrives.
+   */
+  private perceiveUser(text: string, audio: Float32Array | undefined, mirror: boolean) {
+    let voice: VoiceRead | null = null
+    if (audio && audio.length > 16000 * 0.6) {
+      const f = analyzeUtterance(audio)
+      voice = readVoice(f, this.memory.voiceBaseline)
+      this.memory.voiceBaseline = updateBaseline(this.memory.voiceBaseline, f)
+    }
+    const e = fuse(readText(text), voice)
+    this.lastEmpathy = { e, at: Date.now() }
+    this.memory.moodLog = logFeeling(this.memory.moodLog, mem.dayKey(), e)
+    this.feel('talked')
+    const caught = CONTAGION[e.feeling]
+    if (caught && e.confidence >= 0.45) this.feel(caught, e.confidence)
+    if (PRAISE.test(text)) this.feel('praised')
+    if (APOLOGY.test(text)) this.feel('apology')
+
+    const fu = detectFollowUp(text, new Date(), (s) => sanitizeUntrusted(s, 60))
+    if (fu) {
+      const feeling = e.feeling !== 'neutral' && e.confidence >= 0.45 ? e.feeling : undefined
+      this.memory.followUps = addFollowUp(this.memory.followUps, { ...fu, feeling }, Math.random().toString(36).slice(2, 9))
+      this.bridge.log('info', `follow-up noted for ${fu.dueDay}`)
+    }
+    if (mirror && !this.audio.speaking && this.sulk === 'none') {
+      const m = mirrorFor(e)
+      if (m) this.react(m.emotion as Emotion, 'none', m.emote, 0.35 + e.confidence * 0.4)
+    }
+    if (e.feeling !== 'neutral') this.bridge.log('info', `empathy: ${e.feeling} ${e.confidence.toFixed(2)} [${e.cues.slice(0, 4).join(', ')}]`)
+    this.saveMemory()
+  }
+
+  /** Every few seconds: time passes for her mood, and her resting face and idle drift with it. */
+  private ambient() {
+    if (!this.affect) return
+    this.affect = step(this.affect)
+    const busy = this.sulk !== 'none' || this.stage.body.conv !== 'none' || this.audio.speaking || this.local.systemSpeaking
+    if (busy) return
+    const r = restingEmotion(this.affect)
+    // Subtle on purpose: a resting face, not a performance. Reactions still show at full strength.
+    this.stage.body.setRestMood(r.emotion, Math.min(0.55, 0.2 + r.intensity * 0.35))
+  }
+
+  /** One thing she remembered to ask about (exam, interview…) whose day has come. */
+  private takeFollowUp(): string {
+    const due = dueFollowUps(this.memory.followUps, new Date())[0]
+    if (!due || this.settings.streamSafe) return ''
+    this.memory.followUps = markAsked(this.memory.followUps, due.id)
+    this.lastFollowUpAt = Date.now()
+    this.saveMemory()
+    return followUpEvent(due)
   }
 
   private async distill() {
@@ -696,6 +814,7 @@ export class Companion implements ToolHost {
     this.stage.chip.set('')
     if (kind === 'focus') {
       this.memory.streak = mem.recordSession(this.memory.streak)
+      this.feel('focus-done')
       this.bridge.notify('Focus session done! 🎉', `${minutes} minutes — Manyaki is proud of you. Take a short break~`)
       this.stage.emotes.pop('party')
       void this.stage.body.act('cheer')
@@ -745,6 +864,13 @@ export class Companion implements ToolHost {
       const awayMin = Math.round((prev?.idleSeconds ?? 300) / 60)
       this.stage.body.wake()
       this.workStreakSince = null
+      this.feel('returned')
+      const ask = this.takeFollowUp()
+      if (ask) {
+        void this.speakEvent(`They just came back to the computer. ${ask}`, 'welcome-back')
+        this.wasIdle = idle
+        return
+      }
       if (awayMin >= SULK_AFTER_MIN && this.settings.emotionalAttachment) {
         // Gone for an hour or more: she's teary at first, then happy you're back.
         this.stage.face.set('cry', 4000)
@@ -779,8 +905,17 @@ export class Companion implements ToolHost {
       openGoals: this.memory.goals.filter((g) => !g.done).length,
       hour: new Date().getHours()
     })
-    if (!n) return
+    if (!n) {
+      // A quiet moment and something she meant to ask about: bring it up (at most every 20 minutes).
+      const quiet = !this.settings.dnd && this.stage.body.conv === 'none' && !this.audio.speaking && this.timer.state?.kind !== 'focus' &&
+        Date.now() - this.lastAnyNudgeAt > 10 * 60000 && Date.now() - this.lastFollowUpAt > 20 * 60000 && (this.activity?.idleSeconds ?? 0) < 120
+      const ask = quiet ? this.takeFollowUp() : ''
+      if (ask) void this.speakEvent(ask, 'check-in')
+      return
+    }
     this.lastNudgeAt[n.kind] = Date.now()
+    if (n.kind === 'late-night') this.feel('late-night')
+    if (n.kind === 'focus-distracted' || n.kind === 'focus-distracted-firm' || n.kind === 'distracted-long') this.feel('distracted')
     if (n.kind === 'worked-long') this.workStreakSince = Date.now()
     if (n.kind === 'ignored-sulk') this.setSulk('pout')
     if (n.kind === 'ignored-cry') this.setSulk('cry')
@@ -795,7 +930,8 @@ export class Companion implements ToolHost {
   private setSulk(kind: 'pout' | 'cry' | 'angry') {
     this.stopSulkTimers()
     this.sulk = kind
-    this.stage.face.base = kind
+    this.feel('ignored', kind === 'pout' ? 0.6 : 1)
+    this.stage.face.setBase(kind, 1)
     this.stage.body.setMood(kind === 'cry' ? 'sad' : 'pout')
     this.stage.face.set(kind)
     if (kind === 'cry') {
@@ -879,8 +1015,9 @@ export class Companion implements ToolHost {
     this.sulk = 'none'
     this.criesSinceMakeup = 0
     this.angryPats = 0
-    this.stage.face.base = 'neutral'
+    this.stage.face.setBase('neutral', 1)
     this.stage.body.setMood('neutral')
+    this.feel('apology', 0.6)
   }
 
   /** You talked or typed to her, or clicked her. Returns the sulk she was in (now forgiven). */
@@ -907,7 +1044,9 @@ export class Companion implements ToolHost {
       void this.speakEvent("This is your very first meeting! You just dropped onto their desktop. Introduce yourself in a cute way, say you'll keep them company while they work, and ask their name.", 'hello')
     } else {
       const open = this.memory.goals.filter((g) => !g.done).length
-      void this.speakEvent(`They just started their computer; it's ${tod}. Greet them${this.memory.userName ? ` by name` : ''}${open ? ` and mention their ${open} open goal(s)` : ' and ask what they want to get done today'}. Keep it to one or two sentences.`, 'hello')
+      const ask = this.takeFollowUp()
+      const about = ask ? `. ${ask.replace(/\.$/, '')}` : open ? ` and mention their ${open} open goal(s)` : ' and ask what they want to get done today'
+      void this.speakEvent(`They just started their computer; it's ${tod}. Greet them${this.memory.userName ? ` by name` : ''}${about}. Keep it to one or two sentences.`, 'hello')
     }
   }
 
@@ -941,6 +1080,7 @@ export class Companion implements ToolHost {
     const rapid = this.stage.rapid.length >= 5
     if (rapid) {
       this.stage.rapid = []
+      this.feel('poked-too-much')
       this.stage.squash.impulse(-0.8)
       this.react('pout', 'pout', 'anger')
       this.stage.bubble.show('Mou~ stop poking me! 😤', { holdMs: 2500 })
@@ -950,6 +1090,7 @@ export class Companion implements ToolHost {
     if (this.stage.body.conv === 'listening') return
     if (this.audio.speaking) { this.audio.stop(); this.local.stop(); return } // tap to interrupt
     const kind = zone === 'head' ? 'headpat' : 'poke'
+    this.feel(kind)
     // Jelly wobble: a pat squishes her down a little, a poke makes her boing.
     this.stage.squash.impulse(zone === 'head' ? -0.45 : 0.35)
     const l = OFFLINE_LINES[kind]
@@ -998,6 +1139,7 @@ export class Companion implements ToolHost {
     this.stage.bubble.show(text, { you: true, holdMs: 0 })
     this.speechEndAt = performance.now()
     this.firstAudioMs = 0
+    this.perceiveUser(text, undefined, true)
     if (isScreenRequest(text)) return this.lookAndExplain(text)
     if (!this.cloudAllowed() && this.localReady) return this.localTurn({ text })
     if (this.cloudAllowed() && this.live.usable && (await this.live.sendText(redactPII(text, { homeDir: this.bridge.homeDir })))) {
@@ -1056,6 +1198,7 @@ export class Companion implements ToolHost {
 
   private onLanded(hard: boolean) {
     if (hard) {
+      this.feel('dropped')
       this.react('pout', 'none', 'sweat')
       this.stage.bubble.show(pick(['Owww… be gentle!', 'Hey! I\'m not a toy~', 'Wahh, dizzy…']), { holdMs: 2500 })
     } else if (Math.random() < 0.3) this.stage.emotes.pop('sparkle')
@@ -1083,12 +1226,31 @@ export class Companion implements ToolHost {
       hidden: Date.now() < this.hiddenUntil || !!a?.fullscreen,
       timer: this.timer.state ? { ...this.timer.state } : null,
       activity: a && a.category !== 'self' ? `${a.label} (${a.category})` : '',
-      lastLine: this.memory.turns.filter((t) => t.role === 'her').slice(-1)[0]?.text ?? ''
+      lastLine: this.memory.turns.filter((t) => t.role === 'her').slice(-1)[0]?.text ?? '',
+      heart: this.heartStatus(),
+      eyes: this.eyes
     }
     const key = JSON.stringify(st)
     if (key === this.lastStatusKey) return
     this.lastStatusKey = key
     this.bridge.reportStatus(st)
+  }
+
+  private heartStatus(): Status['heart'] {
+    const s = this.affect
+    const seem = this.lastEmpathy && Date.now() - this.lastEmpathy.at < 15 * 60000 && this.lastEmpathy.e.confidence >= 0.45 ? this.lastEmpathy.e.feeling : ''
+    const t = moodTrend(this.memory.moodLog)
+    return {
+      // Rounded so the Home window only updates when something visible changes.
+      bond: Math.round(s.bond * 10) / 10,
+      bondLabel: bondLabel(s.bond),
+      energy: Math.round(s.energy * 100) / 100,
+      pleasure: Math.round(s.p * 100) / 100,
+      arousal: Math.round(s.a * 100) / 100,
+      feeling: restingEmotion(s).emotion,
+      youSeem: seem,
+      trend: t ? `${t.feeling} on ${t.days} of the last 7 days` : ''
+    }
   }
 
   // ---------------- debug ----------------

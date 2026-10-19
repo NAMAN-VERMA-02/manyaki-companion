@@ -48,6 +48,9 @@ export interface Settings {
   onboarded: boolean
 }
 
+import type { FollowUp } from './followups'
+import type { MoodDay, VoiceBaseline } from './empathy'
+
 export interface Fact { text: string; at: number }
 export interface Goal { id: string; text: string; done: boolean; day: string }
 export interface Turn { role: 'user' | 'her'; text: string; at: number }
@@ -61,6 +64,14 @@ export interface MemoryData {
   summary: string
   streak: { days: number; lastDay: string; sessionsToday: number; sessionsTotal: number }
   focus: { endsAt: number; kind: 'focus' | 'break'; minutes: number } | null
+  /** Her inner state (src/core/affect.ts): mood, energy and how close she feels to them. */
+  affect: unknown
+  /** Things they mentioned that she should ask about later (exams, interviews…). */
+  followUps: FollowUp[]
+  /** How they seemed each day (counts of feelings), last 14 days. */
+  moodLog: MoodDay[]
+  /** Their usual voice (loudness, pitch, pace), so she can tell when they sound different. */
+  voiceBaseline: VoiceBaseline
 }
 
 export const DEFAULT_SETTINGS: Settings = {
@@ -98,7 +109,11 @@ export const EMPTY_MEMORY: MemoryData = {
   turns: [],
   summary: '',
   streak: { days: 0, lastDay: '', sessionsToday: 0, sessionsTotal: 0 },
-  focus: null
+  focus: null,
+  affect: null,
+  followUps: [],
+  moodLog: [],
+  voiceBaseline: { energy: 0, pitchHz: 0, pitchVar: 0, rate: 0, n: 0 }
 }
 
 // The surface the preload script exposes on window.manyaki.
@@ -184,6 +199,19 @@ export interface Status {
   timer: { kind: 'focus' | 'break'; endsAt: number; minutes: number } | null
   activity: string             // "VS Code (work)"
   lastLine: string             // what she last said
+  /** Her inner state for the Home window's mood card. */
+  heart: {
+    bond: number               // 0..100
+    bondLabel: string
+    energy: number             // 0..1
+    pleasure: number           // -1..1
+    arousal: number            // -1..1
+    feeling: string            // her resting emotion
+    youSeem: string            // how the user last seemed ('' when unsure)
+    trend: string              // e.g. "stressed 4 of the last 7 days"
+  }
+  /** Browser agent (Manyaki Eyes) activity, when the extension is connected. */
+  eyes: { connected: boolean; task: string; step: string; redactions: number } | null
 }
 
 export type Command =

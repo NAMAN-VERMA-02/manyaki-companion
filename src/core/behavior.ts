@@ -160,6 +160,15 @@ export class Behavior {
     if (this.mode === 'stand') this.applyIdleClip()
   }
 
+  /** Her slow background mood (from the affect engine): a subtle resting face and a fitting idle loop. */
+  setRestMood(e: Emotion, intensity: number) {
+    this.face.setBase(e, intensity)
+    if (this.mood === e) return
+    this.mood = e
+    this.idleClip = faceInfo(e).idle
+    if (this.mode === 'stand' && this.conv === 'none') this.applyIdleClip()
+  }
+
   /** Play a gesture. Held actions (dance, think, shy, pout) last `holdMs`. */
   async act(a: Action, holdMs = 4000) {
     if (a === 'none' || this.usingLaptop || this.mode === 'drag' || this.mode === 'fall' || this.mode === 'jump') return

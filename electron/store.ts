@@ -74,7 +74,10 @@ export function migrateMemory(m: Partial<MemoryData> | undefined): MemoryData {
     facts: Array.isArray(m.facts) ? m.facts.slice(-50) : [],
     goals: Array.isArray(m.goals) ? m.goals : [],
     turns: Array.isArray(m.turns) ? m.turns.slice(-40) : [],
-    streak: { ...base.streak, ...(m.streak ?? {}) }
+    streak: { ...base.streak, ...(m.streak ?? {}) },
+    followUps: Array.isArray(m.followUps) ? m.followUps.filter((f) => f && typeof f.about === 'string' && typeof f.askOn === 'string').slice(-12) : [],
+    moodLog: Array.isArray(m.moodLog) ? m.moodLog.filter((d) => d && typeof d.day === 'string').slice(-14) : [],
+    voiceBaseline: { ...base.voiceBaseline, ...(m.voiceBaseline ?? {}) }
   }
 }
 

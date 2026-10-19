@@ -15,6 +15,14 @@ export interface PersonaContext {
   streamSafe?: boolean
   /** Emotional attachment on: the playful, teasing, affectionate character. Off: professional. */
   playful?: boolean
+  /** Her own mood and bond with them, from the affect engine (e.g. "cheerful and awake; close friends"). */
+  heart?: string
+  /** How they seem right now, from their words and voice (a label, never their audio). */
+  empathy?: string
+  /** A feeling that stood out over the last week, e.g. "stressed on 4 of the last 7 days". */
+  trend?: string
+  /** Things they mentioned earlier that are coming up or just happened (e.g. "DBMS exam on 2026-10-20"). */
+  upcoming?: string[]
 }
 
 // Two characters. Professional is the default; the playful one comes with the Emotional attachment setting.
@@ -62,8 +70,12 @@ export function systemInstruction(ctx: PersonaContext): string {
     `THEIR NAME: ${name}.`,
     `STREAK: ${currentStreak(m.streak, now)} day(s); focus sessions today: ${m.streak.lastDay === today ? m.streak.sessionsToday : 0}.`,
     ctx.focus ? `FOCUS TIMER: in a ${ctx.focus.kind} session, about ${ctx.focus.minutesLeft} min left.` : 'FOCUS TIMER: not running.',
+    ctx.heart ? `YOUR OWN MOOD: ${ctx.heart}. Let it colour your tone a little (sleepier at night, brighter after their wins); never complain about it.` : '',
+    ctx.empathy ? `HOW THEY SEEM (from their words and tone of voice): ${ctx.empathy}.` : '',
+    ctx.trend && !ctx.streamSafe ? `THIS WEEK: they have seemed ${ctx.trend}. If it fits, gently check in about it once; don't diagnose.` : '',
     ''
-  ]
+  ].filter((l, i, a) => l !== '' || a[i - 1] !== '')
+  if (ctx.upcoming?.length && !ctx.streamSafe) lines.push(dataBlock('COMING UP IN THEIR LIFE', ctx.upcoming.map((u) => clean(u, 100))))
   const goals = [
     ...open.map((g, i) => `open ${i + 1}: ${clean(g.text, 100)}`),
     ...doneToday.map((g) => `done: ${clean(g.text, 100)}`)

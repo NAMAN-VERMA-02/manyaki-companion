@@ -82,6 +82,8 @@ export class Expressions {
   intensity = 1
   /** What a held emotion settles back to (normally neutral; pout/cry while she's sulking). */
   base: Emotion = 'neutral'
+  /** How strongly the base mood shows when she's at rest (the affect engine keeps it subtle). */
+  baseIntensity = 1
   blush = 0
   /** Body language for the current emotion, read by the behaviour layer each frame. */
   readonly pose = { tilt: 0, lean: 0, glanceX: 0, glanceY: 0 }
@@ -133,10 +135,18 @@ export class Expressions {
 
   setBlush(v: number) { this.targetBlush = v }
 
+  /** Change the mood she rests in. Shown right away unless a reaction is still being held. */
+  setBase(e: Emotion, intensity = 1) {
+    const changed = e !== this.base || Math.abs(intensity - this.baseIntensity) > 0.05
+    this.base = e
+    this.baseIntensity = intensity
+    if (changed && !this.holdUntil) this.set(e, 0, intensity)
+  }
+
   update(dt: number) {
     const em = this.vrm.expressionManager
     if (!em) return
-    if (this.holdUntil && performance.now() > this.holdUntil) this.set(this.base)
+    if (this.holdUntil && performance.now() > this.holdUntil) this.set(this.base, 0, this.baseIntensity)
     this.t += dt
     const f = this.face
 
