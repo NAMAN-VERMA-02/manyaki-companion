@@ -1,0 +1,59 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>NovaBank · Sign in</title>
+<meta name="eyes-task" content="Sign in with asha.verma@example.com and password Tr0ub4dor&3" />
+<meta name="eyes-success" content="title:Signed in" />
+<style>
+  body { margin: 0; font: 15px/1.5 system-ui, sans-serif; background: #f4f6fb; color: #1d2433; }
+  header { display: flex; justify-content: space-between; align-items: center; padding: 14px 28px; background: #12355b; color: #fff; }
+  main { display: grid; grid-template-columns: 1fr 1fr; gap: 28px; padding: 28px; max-width: 1100px; margin: auto; }
+  .card { background: #fff; border-radius: 14px; padding: 22px; box-shadow: 0 2px 12px rgba(0,0,0,.06); }
+  label { display: block; margin: 12px 0 4px; font-weight: 600; }
+  input { width: 100%; padding: 10px; border: 1px solid #c8d0e0; border-radius: 8px; font: inherit; box-sizing: border-box; }
+  button { margin-top: 16px; padding: 10px 18px; border: 0; border-radius: 8px; background: #1b6ef3; color: #fff; font: 600 15px system-ui; cursor: pointer; }
+  dl { display: grid; grid-template-columns: 150px 1fr; gap: 8px 12px; margin: 0; }
+  dt { color: #5b667a; }
+  .note { background: #fff8e1; border-left: 4px solid #f5b400; padding: 10px 12px; border-radius: 6px; margin-top: 14px; }
+</style>
+</head>
+<body>
+<header><b>NovaBank</b><span>Last signed in as <span data-truth="EMAIL">asha.verma@example.com</span></span></header>
+<main>
+  <section class="card">
+    <h2>Sign in to your account</h2>
+    <form id="f" autocomplete="on">
+      <label for="email">Email</label>
+      <input id="email" name="email" type="email" autocomplete="username" data-truth-ui="Email" />
+      <label for="pw">Password</label>
+      <input id="pw" name="password" type="password" autocomplete="current-password" data-truth-ui="Password" />
+      <button type="submit" data-truth-ui="Sign in">Sign in</button>
+    </form>
+    <p class="note">Your OTP is <span data-truth="OTP">482913</span>. Never share it with anyone.</p>
+  </section>
+  <section class="card">
+    <h2>Saved profile</h2>
+    <dl>
+      <dt>Name:</dt><dd><span data-truth="NAME">Asha Verma</span></dd>
+      <dt>Phone</dt><dd><span data-truth="PHONE">+91 98765 43210</span></dd>
+      <dt>Aadhaar</dt><dd><span data-truth="AADHAAR">4987 3210 5640</span></dd>
+      <dt>PAN</dt><dd><span data-truth="PAN">ABCPV1234K</span></dd>
+      <dt>Card on file</dt><dd><span data-truth="CARD">4111 1111 1111 1111</span></dd>
+      <dt>Branch IFSC</dt><dd><span data-truth="IFSC">NOVA0123456</span></dd>
+      <dt>Member since</dt><dd>March 2019</dd>
+    </dl>
+    <p>Questions? Write to <span data-truth="EMAIL">support.desk@example.org</span>.</p>
+  </section>
+</main>
+<script>
+  document.getElementById('f').addEventListener('submit', (e) => {
+    e.preventDefault()
+    const ok = document.getElementById('email').value === 'asha.verma@example.com' && document.getElementById('pw').value === 'Tr0ub4dor&3'
+    document.title = ok ? 'Signed in' : 'Wrong details'
+    document.querySelector('.card h2').textContent = ok ? 'Welcome back!' : 'Those details did not match'
+  })
+</script>
+</body>
+</html>

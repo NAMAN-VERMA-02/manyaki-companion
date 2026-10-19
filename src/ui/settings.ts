@@ -35,6 +35,8 @@ function fill(s: Settings) {
   $<HTMLInputElement>('titles').checked = s.shareTitles
   $<HTMLTextAreaElement>('work').value = s.categoryRules.work.join(', ')
   $<HTMLTextAreaElement>('distraction').value = s.categoryRules.distraction.join(', ')
+  $<HTMLInputElement>('eyesEnabled').checked = s.eyesEnabled
+  $<HTMLSelectElement>('eyesPlanner').value = s.eyesPlanner
 }
 
 function renderMemory(m: MemoryData) {
@@ -112,6 +114,8 @@ async function init() {
   for (const r of document.querySelectorAll<HTMLInputElement>('input[name=brain]')) r.onchange = () => save({ brainMode: r.value as Settings['brainMode'] })
   $<HTMLInputElement>('gamingwork').onchange = (e) => save({ gamingIsWork: (e.target as HTMLInputElement).checked })
   $<HTMLInputElement>('streamsafe').onchange = (e) => save({ streamSafe: (e.target as HTMLInputElement).checked })
+  $<HTMLInputElement>('eyesEnabled').onchange = (e) => save({ eyesEnabled: (e.target as HTMLInputElement).checked })
+  $<HTMLSelectElement>('eyesPlanner').onchange = (e) => save({ eyesPlanner: (e.target as HTMLSelectElement).value as Settings['eyesPlanner'] })
   const renderLocal = (st: LocalStatus | null) => {
     const el = $('local-state')
     const btn = $<HTMLButtonElement>('local-download')

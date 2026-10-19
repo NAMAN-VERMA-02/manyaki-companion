@@ -64,6 +64,15 @@
         </section>
 
         <section class="card">
+          <h2>💗 Her heart</h2>
+          <div class="meter"><span>Bond</span><div class="bar"><div id="h-bond"></div></div><b id="h-bond-label">—</b></div>
+          <div class="meter"><span>Mood</span><div class="bar mood"><div id="h-mood"></div></div><b id="h-feeling">—</b></div>
+          <div class="meter"><span>Energy</span><div class="bar energy"><div id="h-energy"></div></div><b id="h-energy-label">—</b></div>
+          <p class="hint" id="h-you"></p>
+          <p class="hint">Her mood drifts with what happens (your wins, headpats, being ignored, the time of day) and she catches a little of how you feel, read on this PC from your words and tone of voice. Your bond grows a little each day you spend together.</p>
+        </section>
+
+        <section class="card">
           <h2>Focus timer</h2>
           <div class="timer" id="timer">--:--</div>
           <p class="hint center" id="timer-label">Not running</p>
@@ -84,6 +93,31 @@
             <input id="chat-text" maxlength="500" placeholder="Type to Manyaki… (e.g. &quot;open my Downloads folder&quot;)" />
             <button class="primary" type="submit">Send 💌</button>
           </form>
+        </section>
+
+        <section class="card">
+          <h2>👁️ Manyaki Eyes <span class="hint">browser helper</span></h2>
+          <div class="chips">
+            <span class="chip" id="eyes-server">server …</span>
+            <span class="chip" id="eyes-ext">extension …</span>
+            <span class="chip" id="eyes-planner">planner …</span>
+          </div>
+          <p class="last" id="eyes-last"></p>
+          <div class="row pair">
+            <span class="hint">Pairing code</span>
+            <code id="eyes-code">…</code>
+            <button id="eyes-copy">Copy</button>
+            <button id="eyes-new" class="link" title="Make a new code (the extension must be re-paired)">↻ new</button>
+          </div>
+          <details>
+            <summary>Set up the extension (once)</summary>
+            <ol class="hint">
+              <li><button id="eyes-folder">📂 Open extension folder</button> Then in Chrome or Edge: open <code>chrome://extensions</code>, turn on <b>Developer mode</b>, <b>Load unpacked</b> → choose that folder. Firefox: <code>about:debugging</code> → This Firefox → <b>Load Temporary Add-on</b> → <code>manifest.json</code> in it.</li>
+              <li>Click the 👁️ toolbar icon to open its side panel, open <b>Settings</b> there and paste the pairing code above.</li>
+              <li>Then just ask me: <i>"in my browser, search for wireless earbuds"</i> or type a task in the panel.</li>
+            </ol>
+            <p class="hint">Before anything is planned, the extension finds your private details on this PC (passwords, cards, IDs, emails, phones, names, faces) and replaces them with tokens like [[EMAIL_1]]. Only that sanitised view reaches the planner; real values are typed back in locally.</p>
+          </details>
         </section>
 
         <section class="card">
@@ -168,6 +202,20 @@
         <p class="hint">Qwen2.5-3B (thinking) · Whisper small (hearing, handles Hindi) · Kokoro (voice). Downloaded once from Hugging Face, then works with no internet.</p>
       </div>
       <p class="hint">Either way: her memory is encrypted on this PC, personal details (phone, email, ID/card numbers, keys, your folder paths) are masked before anything goes to Gemini, and text from windows/files is treated as data — it can't make her open things.</p>
+    </section>
+
+    <section>
+      <h2>👁️ Manyaki Eyes (browser helper)</h2>
+      <label class="check"><input id="eyesEnabled" type="checkbox" /> Run the browser-helper server on this PC (127.0.0.1:47821, pairing code required)</label>
+      <label>Who plans the steps
+        <select id="eyesPlanner">
+          <option value="auto">Auto: an open model via Ollama if installed, else Gemini, else simple rules</option>
+          <option value="ollama">Ollama only (open-weights, on this PC; e.g. ollama pull qwen2.5vl:3b)</option>
+          <option value="gemini">Gemini (your key; only the sanitised page is sent)</option>
+          <option value="rules">Simple rules only (no model, works offline)</option>
+        </select>
+      </label>
+      <p class="hint">The planner only ever sees the redacted view: tokens instead of your details, black boxes over private text and mosaics over faces.</p>
     </section>
 
     <section>

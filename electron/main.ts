@@ -7,6 +7,7 @@ import type { Command, DisplayInfo, Settings } from '../shared/types'
 import { startActivityWatcher } from './activity'
 import * as store from './store'
 import { runAction, type ActionKind } from './actions'
+import { eyesInfo, eyesTask, newPairingCode, setEyesProvider, startEyes, stopEyes } from './eyes'
 
 // ---------- offline brain (utility process) ----------
 let brain: ChildProcess | null = null
@@ -285,8 +286,25 @@ function buildTray() {
   tray.setContextMenu(menu)
 }
 
+/** Start (or stop) her browser-agent server to match the settings. */
+async function syncEyes() {
+  const s = store.getSettings()
+  if (!s.eyesEnabled) { await stopEyes(); return }
+  const info = await startEyes({
+    settings: s,
+    geminiKey: store.getApiKey(),
+    pairing: store.getEyesPairing(newPairingCode),
+    appPath: app.getAppPath(),
+    onEvent: (e) => send('eyes', e),
+    log
+  })
+  log('info', `eyes server ${info.running ? `on :${info.port}` : `off (${info.error})`}`)
+}
+
 function applySettings(patch: Partial<Settings>): Settings {
   const next = store.setSettings(patch)
+  if ('eyesEnabled' in patch) void syncEyes()
+  else if ('eyesPlanner' in patch) setEyesProvider(next, store.getApiKey())
   if ('launchAtLogin' in patch && app.isPackaged) app.setLoginItemSettings({ openAtLogin: next.launchAtLogin })
   send('settings', next)
   buildTray()
@@ -317,8 +335,24 @@ function registerIpc() {
   ipcMain.handle('key:set', (_e, key: string) => {
     const ok = store.setApiKey(key)
     log('warn', `api key ${key.trim() ? 'saved' : 'cleared'} (ok=${ok}, length ${key.trim().length})`)
-    if (ok) command({ type: 'reload-key' })
+    if (ok) {
+      command({ type: 'reload-key' })
+      setEyesProvider(store.getSettings(), store.getApiKey())
+    }
     return ok
+  })
+  ipcMain.handle('eyes:task', (e, text: string) => (fromOurWindow(e.sender) ? eyesTask(String(text).slice(0, 500)) : false))
+  ipcMain.handle('eyes:info', () => eyesInfo())
+  ipcMain.handle('eyes:open-extension', async () => {
+    const dir = app.isPackaged ? join(process.resourcesPath, 'eyes', 'extension') : join(app.getAppPath(), 'eyes', 'extension', 'dist')
+    if (!existsSync(join(dir, 'manifest.json'))) return 'not built yet: run npm run eyes:build'
+    return (await shell.openPath(dir)) || dir
+  })
+  ipcMain.handle('eyes:new-pairing', async (e) => {
+    if (!fromOurWindow(e.sender)) return eyesInfo()
+    store.setEyesPairing(newPairingCode())
+    await syncEyes()
+    return eyesInfo()
   })
   ipcMain.handle('settings:get', () => store.getSettings())
   ipcMain.handle('settings:set', (_e, patch: Partial<Settings>) => applySettings(patch))
@@ -422,6 +456,7 @@ app.whenReady().then(() => {
   registerIpc()
   createOverlay()
   buildTray()
+  void syncEyes()
   if (app.isPackaged) app.setLoginItemSettings({ openAtLogin: store.getSettings().launchAtLogin })
 
   globalShortcut.register('Control+Alt+Space', () => command({ type: 'toggle-listen' }))
@@ -457,7 +492,7 @@ app.whenReady().then(() => {
   log('info', `Manyaki started; data at ${store.storePath()}`)
 })
 
-app.on('before-quit', () => { quitting = true; brain?.kill() })
+app.on('before-quit', () => { quitting = true; brain?.kill(); void stopEyes() })
 
 app.on('will-quit', () => {
   globalShortcut.unregisterAll()

@@ -18,6 +18,8 @@ export interface ToolHost {
   openThing(kind: 'folder' | 'app' | 'website', target: string): Promise<string>
   /** Takes one screenshot (only right after the user asked) and returns what is on it. */
   lookAtScreen(question: string): Promise<string>
+  /** Hands a task to the Manyaki Eyes browser extension (private details stay on the PC). */
+  browserTask(task: string): Promise<string>
 }
 
 export const NON_BLOCKING = new Set(['react'])
@@ -82,6 +84,11 @@ export function toolDeclarations(live: boolean): FunctionDeclaration[] {
       parameters: { type: Type.OBJECT, properties: { question: { type: Type.STRING, description: 'what they want to know about it' } }, required: ['question'] }
     },
     {
+      name: 'browser_task',
+      description: 'Do something for them on the web page open in their browser (fill a form, search a site, click through steps, sign in) using your browser helper, Manyaki Eyes. It hides their private details on their PC before anything is planned. Only when they ask you to do something in the browser or on a page. Pass their request in their own words, including any details they gave.',
+      parameters: { type: Type.OBJECT, properties: { task: { type: Type.STRING, description: 'what to do on the page' } }, required: ['task'] }
+    },
+    {
       name: 'set_user_name',
       description: 'Save what they want to be called.',
       parameters: { type: Type.OBJECT, properties: { name: { type: Type.STRING } }, required: ['name'] }
@@ -114,6 +121,7 @@ export async function runTool(host: ToolHost, name: string, args: Record<string,
       case 'open_app': return { result: await host.openThing('app', String(args.name ?? '')) }
       case 'open_website': return { result: await host.openThing('website', String(args.target ?? '')) }
       case 'look_at_screen': return { result: await host.lookAtScreen(String(args.question ?? '')) }
+      case 'browser_task': return { result: await host.browserTask(String(args.task ?? '')) }
       default: return { error: `unknown tool ${name}` }
     }
   } catch (err) {

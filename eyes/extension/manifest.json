@@ -1,0 +1,17 @@
+{
+  "manifest_version": 3,
+  "name": "Manyaki Eyes",
+  "version": "0.1.0",
+  "description": "A privacy-preserving browser agent: on-device vision hides your private data before any server sees the page.",
+  "icons": { "128": "icon.png" },
+  "action": { "default_title": "Manyaki Eyes", "default_icon": "icon.png" },
+  "background": { "service_worker": "background.js", "scripts": ["background.js"] },
+  "side_panel": { "default_path": "panel.html" },
+  "sidebar_action": { "default_panel": "panel.html", "default_title": "Manyaki Eyes", "default_icon": "icon.png", "open_at_install": false },
+  "permissions": ["activeTab", "tabs", "scripting", "storage", "sidePanel"],
+  "host_permissions": ["<all_urls>"],
+  "content_scripts": [{ "matches": ["http://*/*", "https://*/*"], "js": ["content.js"], "run_at": "document_idle" }],
+  "content_security_policy": { "extension_pages": "script-src 'self' 'wasm-unsafe-eval'; object-src 'self'" },
+  "web_accessible_resources": [],
+  "browser_specific_settings": { "gecko": { "id": "eyes@manyaki.local", "strict_min_version": "128.0" } }
+}

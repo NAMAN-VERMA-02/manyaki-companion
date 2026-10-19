@@ -1,4 +1,4 @@
-import type { ActivitySnapshot, Bridge, Command, LocalStatus, MemoryData, Settings, Status } from '../shared/types'
+import type { ActivitySnapshot, Bridge, Command, EyesEventMsg, LocalStatus, MemoryData, Settings, Status } from '../shared/types'
 import { looksLikeInstruction, redactPII, sanitizeUntrusted } from '../shared/privacy'
 import { GAME_RE, isScreenRequest, isTeachRequest, moodFromReply, parseIntent, type Intent } from '../shared/intents'
 import type { Stage, ClickZone } from './stage'
@@ -149,6 +149,7 @@ export class Companion implements ToolHost {
     this.bridge.on('settings', (s) => this.applySettings(s))
     this.bridge.on('command', (c) => this.onCommand(c))
     this.bridge.on('memory', (m) => { this.memory = m })
+    this.bridge.on('eyes', (e) => this.onEyes(e))
 
     setInterval(() => this.timer.tick(), 1000)
     setInterval(() => this.considerNudge(), 20000)
@@ -351,6 +352,7 @@ export class Companion implements ToolHost {
       case 'open_folder': await this.openThing('folder', i.arg); break
       case 'open_app': await this.openThing('app', i.arg); break
       case 'open_website': await this.openThing('website', i.arg); break
+      case 'browser_task': await this.browserTask(i.arg); break
     }
   }
 
@@ -700,6 +702,59 @@ export class Companion implements ToolHost {
     // Tool results go back to Gemini on the cloud path: hide the user's folder paths.
     detail = redactPII(detail, { homeDir: this.bridge.homeDir })
     return ok ? detail : `${detail}. Tell them kindly and maybe ask for the exact name.`
+  }
+
+  /**
+   * Hands a task to Manyaki Eyes (her browser extension). Same guard as opening things: only right after
+   * the user asked. The task text goes to the extension on this PC, which tokenises private details itself.
+   */
+  async browserTask(task: string): Promise<string> {
+    if (!this.freshUserRequest()) return 'blocked: only do browser tasks when they just asked for one'
+    const clean = sanitizeUntrusted(task, 400)
+    if (!clean) return 'no task given'
+    const info = await this.bridge.eyes.info().catch(() => null)
+    if (!info?.running) return 'my browser helper is switched off: they can turn on Manyaki Eyes in Settings'
+    if (!info.connected) return 'my browser helper extension is not connected: they need to open the Manyaki Eyes side panel in Chrome or Firefox (Home → Eyes has the steps)'
+    const ok = await this.bridge.eyes.task(clean)
+    this.stage.chip.set('👁️ handing it to my browser helper…', '', 4000)
+    void this.stage.body.act('think', 2000)
+    return ok ? 'sent to their browser; you will hear back when it is done' : 'could not reach the browser helper'
+  }
+
+  /** Progress from the extension. Counts only: values never come back here. */
+  private onEyes(e: EyesEventMsg) {
+    const task = e.task ? sanitizeUntrusted(e.task, 120) : this.eyes?.task ?? ''
+    if (e.kind === 'connected') {
+      this.eyes = { connected: true, task: '', step: '', redactions: 0 }
+      this.stage.chip.set('👁️ browser helper connected', '', 3000)
+      return
+    }
+    const prev = this.eyes
+    this.eyes = { connected: true, task, step: e.detail ? sanitizeUntrusted(e.detail, 120) : prev?.step ?? '', redactions: Math.max(prev?.task === task ? prev.redactions : 0, e.redactions ?? 0) }
+    switch (e.kind) {
+      case 'task':
+        this.react('determined', 'think', 'idea', 0.6)
+        this.stage.chip.set('👁️ working in your browser…', '', 5000)
+        break
+      case 'step':
+        // The first time private details are hidden for a task, she says so (it's the point of the feature).
+        if ((e.redactions ?? 0) > 0 && (prev?.task !== task || !prev.redactions)) {
+          this.stage.emotes.pop('sparkle')
+          this.stage.chip.set(`🛡️ hid ${e.redactions} private thing${e.redactions === 1 ? '' : 's'} before asking the server`, '', 5000)
+        }
+        break
+      case 'done':
+        this.feel('goal-done', 0.6)
+        void this.speakEvent(`Your browser helper just finished their task "${task}" (${e.detail ? sanitizeUntrusted(e.detail, 160) : 'done'}). Tell them in one short line; if it helps, mention their private details never left their PC.`, 'check-in')
+        break
+      case 'error':
+        this.react('worried', 'shake', 'sweat', 0.6)
+        this.stage.bubble.show(`My browser helper got stuck 🥺 ${e.detail ? sanitizeUntrusted(e.detail, 120) : ''}`, { holdMs: 6000 })
+        break
+      case 'ask':
+        this.stage.bubble.show(`My browser helper has a question for you in the side panel 👀`, { holdMs: 6000 })
+        break
+    }
   }
 
   setUserName(name: string) {

@@ -1,4 +1,4 @@
-import type { Bridge, MemoryData, Settings, Status } from '../../shared/types'
+import type { Bridge, EyesInfo, MemoryData, Settings, Status } from '../../shared/types'
 
 // The Home tab: her live status, quick controls, focus timer, chat and today's goals.
 
@@ -17,7 +17,10 @@ export function showTab(tab: string) {
 
 const MOODS: Record<string, string> = {
   happy: 'happy 😊', excited: 'excited ✨', sad: 'a bit sad 🥺', worried: 'worried 😟', angry: 'grumpy 😤', pout: 'pouting 😤',
-  surprised: 'surprised 😮', relaxed: 'relaxed 😌', shy: 'shy ☺️', smug: 'smug 😏', sleepy: 'sleepy 😪', neutral: 'calm 🙂'
+  surprised: 'surprised 😮', relaxed: 'relaxed 😌', shy: 'shy ☺️', smug: 'smug 😏', sleepy: 'sleepy 😪', neutral: 'calm 🙂',
+  proud: 'proud 🌟', love: 'full of love 💗', grateful: 'grateful 🙏', playful: 'playful 😜', curious: 'curious 🤔',
+  determined: 'determined 🔥', confused: 'confused 😵', embarrassed: 'embarrassed 😳', nervous: 'nervous 😬', scared: 'scared 😨',
+  lonely: 'lonely 🥺', disappointed: 'disappointed 😞', hurt: 'hurt 💔', cry: 'teary 😢', jealous: 'jealous 😒', grumpy: 'grumpy 😾', bored: 'bored 🥱'
 }
 const DOING: Record<string, string> = {
   stand: 'hanging out', walk: 'walking around', sit: 'sitting', sleep: 'napping 💤', act: 'busy', fall: 'falling!',
@@ -40,6 +43,38 @@ function renderStatus() {
   $('chip-place').textContent = s.activity ? `📍 you're in ${s.activity}` : '📍 —'
   $('last-line').textContent = s.lastLine ? `“${s.lastLine}”` : ''
   $('q-hide').textContent = s.hidden ? '🙋 Show her' : '🙈 Hide 30 min'
+}
+
+function renderHeart() {
+  const h = status?.heart
+  if (!h) return
+  $('h-bond').style.width = `${Math.round(h.bond)}%`
+  $('h-bond-label').textContent = `${h.bondLabel} · ${Math.round(h.bond)}`
+  // Pleasure -1..1 shown as 0..100%.
+  $('h-mood').style.width = `${Math.round((h.pleasure + 1) * 50)}%`
+  $('h-feeling').textContent = MOODS[h.feeling] ?? h.feeling
+  $('h-energy').style.width = `${Math.round(h.energy * 100)}%`
+  $('h-energy-label').textContent = h.energy < 0.25 ? 'very sleepy 😪' : h.energy < 0.45 ? 'a bit tired' : h.energy > 0.75 ? 'full of energy ⚡' : 'awake'
+  const parts = []
+  if (h.youSeem) parts.push(`You seem ${h.youSeem} right now.`)
+  if (h.trend) parts.push(`This week you've seemed ${h.trend}.`)
+  $('h-you').textContent = parts.join(' ')
+}
+
+let eyes: EyesInfo | null = null
+async function refreshEyes() {
+  eyes = await bridge.eyes.info().catch(() => null)
+  const e = eyes
+  if (!e) return
+  $('eyes-server').textContent = e.running ? `server on :${e.port}` : `server off${e.error ? ` (${e.error})` : ''}`
+  $('eyes-server').className = `chip ${e.running ? 'ok' : 'bad'}`
+  const connected = e.connected || !!status?.eyes?.connected
+  $('eyes-ext').textContent = connected ? 'extension connected' : 'extension not connected'
+  $('eyes-ext').className = `chip ${connected ? 'ok' : ''}`
+  $('eyes-planner').textContent = `planner: ${e.planner}`
+  $('eyes-code').textContent = e.pairing || '—'
+  const t = status?.eyes
+  $('eyes-last').textContent = t?.task ? `Last task: “${t.task}”${t.redactions ? ` · hid ${t.redactions} private item${t.redactions === 1 ? '' : 's'}` : ''}${t.step ? ` · ${t.step}` : ''}` : ''
 }
 
 function renderTimer() {
@@ -142,7 +177,25 @@ export async function initHome() {
   memory = await bridge.getMemory()
   renderSettings()
   renderMemory()
-  bridge.on('status', (s) => { status = s; renderStatus(); renderTimer() })
+  bridge.on('status', (s) => { status = s; renderStatus(); renderTimer(); renderHeart() })
+  bridge.on('eyes', () => void refreshEyes())
+  void refreshEyes()
+  setInterval(() => void refreshEyes(), 5000)
+  $('eyes-copy').onclick = async () => {
+    if (!eyes?.pairing) return
+    await navigator.clipboard.writeText(eyes.pairing)
+    $('eyes-copy').textContent = 'Copied ✓'
+    setTimeout(() => ($('eyes-copy').textContent = 'Copy'), 1500)
+  }
+  $('eyes-folder').onclick = async () => {
+    const r = await bridge.eyes.openExtensionFolder()
+    if (/not built/.test(r)) alert(`The extension isn't built yet. In the project folder run: npm run eyes:build`)
+  }
+  $('eyes-new').onclick = async () => {
+    if (!confirm('Make a new pairing code? The browser extension will need the new one.')) return
+    eyes = await bridge.eyes.newPairing()
+    void refreshEyes()
+  }
   bridge.on('settings', (s) => { settings = s; renderSettings() })
   bridge.on('memory', (m) => { memory = m; renderMemory() })
   setInterval(renderTimer, 500)

@@ -46,6 +46,31 @@ export interface Settings {
   breakMinutes: number
   categoryRules: { work: string[]; distraction: string[] }
   onboarded: boolean
+  /** Host the Manyaki Eyes server for the browser extension. */
+  eyesEnabled: boolean
+  /** Who plans browser actions: auto (Ollama if installed, else Gemini, else rules), or one of them. */
+  eyesPlanner: 'auto' | 'ollama' | 'gemini' | 'rules'
+}
+
+/** The browser agent server she hosts (see electron/eyes.ts). */
+export interface EyesInfo {
+  running: boolean
+  port: number
+  pairing: string
+  planner: string
+  /** The extension polled in the last ~40 s. */
+  connected: boolean
+  error: string
+}
+
+/** Progress reported by the extension, relayed to her. Never contains private values. */
+export interface EyesEventMsg {
+  kind: 'connected' | 'task' | 'step' | 'done' | 'error' | 'ask'
+  task?: string
+  detail?: string
+  step?: number
+  redactions?: number
+  ms?: number
 }
 
 import type { FollowUp } from './followups'
@@ -98,7 +123,9 @@ export const DEFAULT_SETTINGS: Settings = {
     distraction: ['youtube', 'instagram', 'netflix', 'reddit', 'twitter', ' x ', 'facebook', 'tiktok', 'prime video',
       'hotstar', 'twitch', 'discord', 'steam', 'epic games', 'valorant', 'minecraft', 'spotify', 'whatsapp', 'telegram']
   },
-  onboarded: false
+  onboarded: false,
+  eyesEnabled: true,
+  eyesPlanner: 'auto'
 }
 
 export const EMPTY_MEMORY: MemoryData = {
@@ -156,6 +183,14 @@ export interface Bridge {
     transcribe(audio: Float32Array): Promise<{ text: string; ms: number }>
     tts(text: string, voice: string): Promise<{ samples: Float32Array; rate: number; ms: number }>
   }
+  /** Browser agent (Manyaki Eyes): queue a task for the extension, read the server's state. */
+  eyes: {
+    task(text: string): Promise<boolean>
+    info(): Promise<EyesInfo>
+    newPairing(): Promise<EyesInfo>
+    /** Opens the folder to "Load unpacked" from. Resolves with the path (or why it failed). */
+    openExtensionFolder(): Promise<string>
+  }
   /** Send a command to her (from the Home window). */
   sendCommand(cmd: Command): void
   /** Overlay -> Home window status updates. */
@@ -175,6 +210,7 @@ export interface Bridge {
   on(channel: 'status', cb: (s: Status) => void): () => void
   on(channel: 'tab', cb: (tab: string) => void): () => void
   on(channel: 'local-status', cb: (s: LocalStatus) => void): () => void
+  on(channel: 'eyes', cb: (e: EyesEventMsg) => void): () => void
 }
 
 export interface LocalStatus {

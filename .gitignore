@@ -5,3 +5,10 @@ release/
 assets/vendor/
 *.log
 .env*
+
+# Manyaki Eyes build outputs
+eyes/extension/dist/
+eyes/extension/vendor/
+eyes/server/dist/
+eyes/tests/bench-*.json
+eyes/tests/bench-*.png

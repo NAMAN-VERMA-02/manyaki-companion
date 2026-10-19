@@ -165,7 +165,8 @@ describe('tools', () => {
     remember: (f) => `rem ${f}`,
     setUserName: (n) => `name ${n}`,
     openThing: async (k, t) => `${k} ${t}`,
-    lookAtScreen: async (q) => `looked: ${q}`
+    lookAtScreen: async (q) => `looked: ${q}`,
+    browserTask: async (t) => `browser: ${t}`
   }
   it('validates arguments and never throws', async () => {
     expect(await runTool(host, 'react', { emotion: 'nope', action: 'dance', emote: 'heart' })).toEqual({ ok: true })
@@ -174,6 +175,7 @@ describe('tools', () => {
     expect(await runTool(host, 'start_focus', {})).toEqual({ result: 'focus 25' })
     expect(await runTool(host, 'open_folder', { name: 'Downloads' })).toEqual({ result: 'folder Downloads' })
     expect(await runTool(host, 'open_website', { target: 'youtube' })).toEqual({ result: 'website youtube' })
+    expect(await runTool(host, 'browser_task', { task: 'search for earbuds' })).toEqual({ result: 'browser: search for earbuds' })
     expect(await runTool(host, 'mystery')).toHaveProperty('error')
   })
 })

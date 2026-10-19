@@ -1,9 +1,12 @@
 :root {
   --pink: #ff7aa8;
   --pink-d: #e25589;
+  /* Filled backgrounds behind white text: deep enough for 4.5:1 contrast. */
+  --pink-strong: #d2387a;
+  --pink-strong-d: #b82d68;
   --pink-soft: #ffe3ee;
   --ink: #3b2340;
-  --muted: #8a6f8d;
+  --muted: #75597a;
   --card: #ffffff;
   --bg: #fff7fb;
   font-family: 'Segoe UI Variable Text', 'Segoe UI', system-ui, sans-serif;
@@ -36,7 +39,7 @@ header img {
   height: 64px;
   border-radius: 18px;
   object-fit: cover;
-  box-shadow: 0 4px 14px rgba(226, 85, 137, 0.3);
+  box-shadow: 0 3px 10px rgba(0, 0, 0, 0.16);
 }
 h1 {
   margin: 0;
@@ -103,13 +106,13 @@ button {
   cursor: pointer;
 }
 button.primary {
-  background: var(--pink);
-  border-color: var(--pink);
+  background: var(--pink-strong);
+  border-color: var(--pink-strong);
   color: white;
   font-weight: 600;
 }
 button.primary:hover {
-  background: var(--pink-d);
+  background: var(--pink-strong-d);
 }
 button.danger {
   color: #d23b5b;
@@ -169,7 +172,7 @@ footer {
 header { position: sticky; top: 0; z-index: 2; background: var(--bg); padding: 6px 0 10px; }
 .tabs { margin-left: auto; display: flex; gap: 6px; }
 .tab { border-radius: 999px; padding: 7px 14px; }
-.tab.active { background: var(--pink); border-color: var(--pink); color: white; font-weight: 600; }
+.tab.active { background: var(--pink-strong); border-color: var(--pink-strong); color: white; font-weight: 600; }
 .hidden { display: none !important; }
 .settings { max-width: 640px; margin: 0 auto; }
 
@@ -200,7 +203,7 @@ input.small { flex: 0 0 64px; width: 64px; }
 .transcript { height: 300px; overflow-y: auto; display: flex; flex-direction: column; gap: 6px; padding: 8px; border-radius: 12px; background: var(--bg); }
 .msg { max-width: 82%; padding: 7px 11px; border-radius: 14px; font-size: 13.5px; line-height: 1.4; white-space: pre-wrap; word-wrap: break-word; }
 .msg.her { align-self: flex-start; background: var(--pink-soft); border-bottom-left-radius: 4px; }
-.msg.user { align-self: flex-end; background: var(--pink); color: white; border-bottom-right-radius: 4px; }
+.msg.user { align-self: flex-end; background: var(--pink-strong); color: white; border-bottom-right-radius: 4px; }
 .msg.pending { opacity: 0.6; }
 
 .goals { list-style: none; padding: 0; margin: 8px 0 0; }
@@ -220,3 +223,15 @@ form.row input { flex: 1; }
 .bar { height: 6px; border-radius: 6px; background: var(--pink-soft); margin-top: 6px; overflow: hidden; }
 .bar > div { height: 100%; width: 0; background: var(--pink); transition: width 0.4s ease; }
 button:disabled { opacity: 0.6; cursor: default; }
+
+/* ---------- Heart + Eyes cards ---------- */
+.meter { display: grid; grid-template-columns: 56px 1fr minmax(110px, auto); gap: 10px; align-items: center; margin: 6px 0; font-size: 13px; }
+.meter span { color: var(--muted); }
+.meter b { font-weight: 600; font-size: 12.5px; text-align: right; }
+.meter .bar { margin-top: 0; height: 8px; }
+.bar.mood > div { background: linear-gradient(90deg, #7c9cff, var(--pink)); }
+.bar.energy > div { background: #f4b740; }
+.pair { align-items: center; flex-wrap: wrap; }
+.pair code { padding: 4px 8px; border-radius: 8px; background: var(--bg); box-shadow: 0 0 0 1px var(--pink-soft); font-size: 13px; user-select: all; }
+details summary { cursor: pointer; margin-top: 8px; font-size: 13px; }
+select { min-width: 0; }

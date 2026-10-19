@@ -10,34 +10,39 @@
     "dev": "electron-vite dev",
     "build": "electron-vite build",
     "preview": "electron-vite preview",
-    "typecheck": "tsc --noEmit -p tsconfig.json",
+    "typecheck": "tsc --noEmit -p tsconfig.json && tsc --noEmit -p eyes/extension/tsconfig.json",
     "test": "vitest run",
-    "dist": "electron-vite build && electron-builder --win nsis",
+    "dist": "npm run eyes:build && electron-vite build && electron-builder --win nsis",
     "postinstall": "node scripts/copy-vendor.mjs",
     "predev": "node scripts/copy-vendor.mjs",
-    "prebuild": "node scripts/copy-vendor.mjs"
+    "prebuild": "node scripts/copy-vendor.mjs",
+    "eyes:build": "node eyes/extension/build.mjs",
+    "eyes:server": "node eyes/server/build.mjs && node eyes/server/dist/main.mjs"
   },
   "devDependencies": {
     "@google/genai": "^2.30.0",
+    "@mediapipe/tasks-vision": "1.1.1",
     "@pixiv/three-vrm": "^3.5.5",
     "@pixiv/three-vrm-animation": "^3.5.5",
     "@ricky0123/vad-web": "^0.0.31",
+    "@types/chrome": "0.3.4",
     "@types/node": "^24.19.2",
     "@types/three": "^0.186.0",
     "electron": "^44.7.2",
     "electron-builder": "^26.15.3",
     "electron-vite": "^6.0.0",
+    "playwright": "1.63.0",
     "three": "^0.186.1",
     "typescript": "^5.9.3",
     "vite": "^8.3.4",
     "vitest": "^5.0.5"
   },
   "dependencies": {
+    "@huggingface/transformers": "3.8.1",
     "electron-store": "^12.0.0",
     "get-windows": "^9.3.0",
-    "node-llama-cpp": "^3.22.1",
     "kokoro-js": "^1.2.1",
-    "@huggingface/transformers": "3.8.1"
+    "node-llama-cpp": "^3.22.1"
   },
   "build": {
     "appId": "com.naman.manyaki",
@@ -60,6 +65,20 @@
       {
         "from": "assets",
         "to": "assets",
+        "filter": [
+          "**/*"
+        ]
+      },
+      {
+        "from": "eyes/fixtures",
+        "to": "eyes/fixtures",
+        "filter": [
+          "**/*"
+        ]
+      },
+      {
+        "from": "eyes/extension/dist",
+        "to": "eyes/extension",
         "filter": [
           "**/*"
         ]

@@ -33,6 +33,12 @@ const bridge: Bridge = {
     transcribe: (audio) => ipcRenderer.invoke('local:transcribe', audio),
     tts: (text, voice) => ipcRenderer.invoke('local:tts', text, voice)
   },
+  eyes: {
+    task: (text) => ipcRenderer.invoke('eyes:task', text),
+    info: () => ipcRenderer.invoke('eyes:info'),
+    newPairing: () => ipcRenderer.invoke('eyes:new-pairing'),
+    openExtensionFolder: () => ipcRenderer.invoke('eyes:open-extension')
+  },
   sendCommand: (cmd) => ipcRenderer.send('command:send', cmd),
   reportStatus: (s) => ipcRenderer.send('status:report', s),
   showMenu: () => ipcRenderer.send('menu:popup'),

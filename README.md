@@ -79,6 +79,23 @@ Privacy protections, in every mode:
   - Offline, actions come only from fixed rules applied to your own words.
 - **Screenshots only on request.** One screenshot is taken only when you ask, is never saved, and is never taken in Private mode.
 
+## Her heart 💗
+
+She has an inner life rather than a list of canned moods:
+
+- **Continuous mood.** Pleasure, arousal and dominance move with what happens: your wins, headpats, pokes, being dropped, being ignored, you coming back. They drift back to her cheerful baseline over minutes (arousal) or half an hour (pleasure). Her resting face and idle pose follow it subtly, and the brain is told how she feels so her words match her face.
+- **Energy** follows the time of day. At 3 AM she's sleepy whatever else is going on.
+- **Bond** grows a little each day you spend time together (capped per day, so it means something) and fades slowly if you vanish for more than a few days. Close friends forgive faster.
+- **Empathy, on this PC.** She reads how you feel from your words (English, Hindi, Hinglish and emoji, with negation like "not happy") and from your voice: loudness, pitch and pace compared with *your* usual voice, computed locally in a few milliseconds. She makes a matching face right away, catches a little of your mood, and the brain gets a short hint ("they sound stressed: be calm, one small next step"). Only the label is used; no audio is stored.
+- **Follow-ups.** Say "my DBMS exam is tomorrow" and she wishes you luck on the day, then asks how it went the day after.
+- **Weekly mood trend.** "You've seemed stressed on 4 of the last 7 days" lets her gently check in once.
+
+Home shows her mood, energy and your bond.
+
+## Manyaki Eyes 👁️ (browser helper)
+
+Her browser extension does tasks on web pages for you ("in my browser, sign in with my email…", "is page pe form bhar do") while keeping your private details on your PC. On-device vision finds passwords, cards, IDs, emails, phones, names and faces and replaces them with tokens like `[[EMAIL_1]]` before anything is planned. The planner (an open model via Ollama, or Gemini) only sees the redacted view, and real values are typed back in locally. She hosts the server and tells you what she hid. Setup and benchmark: [eyes/README.md](eyes/README.md).
+
 ## For gamers & streamers
 
 - **Gaming counts as work:** she won't nag you while you play or stream.
