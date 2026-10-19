@@ -4,7 +4,7 @@ import { scrubPayload } from '../../shared/leakguard'
 import { intersect, area } from '../../shared/metrics'
 import type { Vault } from '../../shared/vault'
 import type { ContentRequest, Perception, RawElement } from './content'
-import { caption, detectFaces, findNames, ocr } from './vision'
+import { caption, detectFaces, findNames, florenceInfo, loadFlorence, loadNer, nerInfo, ocr } from './vision'
 import { encode, redact, toCanvas, type Mark } from './redact'
 
 // One observation of the current tab: perceive the DOM, capture pixels, find everything private (DOM
@@ -47,6 +47,17 @@ export async function ensureContent(tabId: number): Promise<void> {
 
 const captionCache = new Map<string, string>()
 
+/** Resolves to `fallback` if `p` takes longer than `ms` (a stuck model must not stall the agent). */
+const within = <T>(p: Promise<T>, ms: number, fallback: T): Promise<T> =>
+  Promise.race([p, new Promise<T>((r) => setTimeout(() => r(fallback), ms))])
+
+/** Deep models are used only once loaded; until then they load in the background and steps run fast. */
+function deepReady(): { ocr: boolean; ner: boolean } {
+  if (!florenceInfo.ready && !florenceInfo.error) void loadFlorence()
+  if (!nerInfo.ready && !nerInfo.error) void loadNer()
+  return { ocr: florenceInfo.ready, ner: nerInfo.ready }
+}
+
 export async function observe(tab: chrome.tabs.Tab, task: string, vault: Vault, history: HistoryItem[], step: number, opts: ObserveOptions): Promise<Observation> {
   const tabId = tab.id!
   const timings: Record<string, number> = {}
@@ -86,11 +97,14 @@ export async function observe(tab: chrome.tabs.Tab, task: string, vault: Vault, 
   for (const t of perception.texts) textJobs.push({ unit: t.unit, text: t.text, spans: findPII(t.text) })
   pairLabels(perception, textJobs)
   for (const e of perception.elements) if (e.unit && e.unitText) textJobs.push({ unit: e.unit, text: e.unitText, spans: findPII(e.unitText), elementId: e.id })
-  if (opts.deep) {
+  const deep = opts.deep ? deepReady() : { ocr: false, ner: false }
+  if (deep.ner) {
     await time('ner', async () => {
+      const t0 = performance.now()
       for (const j of textJobs.slice(0, 120)) {
         if (!/[A-Z][a-z]+/.test(j.text)) continue
-        const names = await findNames(j.text)
+        if (performance.now() - t0 > 4000) break // time budget: the rest are still covered by the rules
+        const names = await within(findNames(j.text), 2000, [])
         if (names.length) j.spans = resolveOverlaps([...j.spans, ...names.map((n) => ({ start: n.start, end: n.end, type: 'NAME' as PIIType, source: 'context' as const, confidence: n.score }))])
       }
     })
@@ -104,7 +118,7 @@ export async function observe(tab: chrome.tabs.Tab, task: string, vault: Vault, 
     let i = 0
     for (const s of j.spans) {
       const value = j.text.slice(s.start, s.end)
-      const src: DetectionSource = s.source === 'regex' ? 'regex' : opts.deep && s.type === 'NAME' && !/[:\-–]\s*$/.test(j.text.slice(0, s.start)) ? 'ner' : 'context'
+      const src: DetectionSource = s.source === 'regex' ? 'regex' : deep.ner && s.type === 'NAME' && !/[:\-–]\s*$/.test(j.text.slice(0, s.start)) ? 'ner' : 'context'
       const token = add(s.type, value, rects[ri++] ?? [], src, s.confidence, j.elementId)
       out += j.text.slice(i, s.start) + token
       i = s.end
@@ -156,8 +170,8 @@ export async function observe(tab: chrome.tabs.Tab, task: string, vault: Vault, 
     faces.forEach((f, n) => add('FACE', `face:${step}:${n}:${Math.round(f.box.x)},${Math.round(f.box.y)}`, [f.box], 'face', f.score))
   }
   const vision: StepRequest['vision'] = {}
-  if (opts.deep) {
-    const lines = await time('ocr', () => ocr(original))
+  if (deep.ocr) {
+    const lines = await time('ocr', () => within(ocr(original), 20000, []))
     const domBoxes = perception.texts.map((t) => t.box).concat(perception.elements.map((e) => e.box))
     const ocrOut: { text: string; box: Box }[] = []
     for (const l of lines) {
@@ -184,9 +198,9 @@ export async function observe(tab: chrome.tabs.Tab, task: string, vault: Vault, 
   // ---- redact pixels ----
   const marks: Mark[] = redactions.flatMap((r) => r.boxes.map((box) => ({ box, type: r.type, token: r.token })))
   const redacted = await time('redact', async () => redact(original, marks))
-  if (opts.deep) {
+  if (deep.ocr) {
     const key = `${page.url}#${Math.round(page.scrollY / 400)}`
-    vision.caption = captionCache.get(key) ?? (await time('caption', () => caption(redacted)))
+    vision.caption = captionCache.get(key) ?? (await time('caption', () => within(caption(redacted), 15000, '')))
     captionCache.set(key, vision.caption)
     vision.caption = vault.tokenize(vision.caption).text
   }
@@ -199,7 +213,7 @@ export async function observe(tab: chrome.tabs.Tab, task: string, vault: Vault, 
     elements,
     text: prose.map((t) => t.text),
     textBoxes: prose.map((t) => round(t.box)),
-    ...(opts.deep ? { vision } : {}),
+    ...(deep.ocr ? { vision } : {}),
     redactions: redactions.map((r) => ({ ...r, boxes: r.boxes.map(round) })),
     history,
     step

@@ -66,7 +66,7 @@ Measured on this laptop (Edge 155 headless, integrated GPU, rule planner, 15 vie
 | ④ JS heap with face model loaded | ≈10 MB |
 | ⑤ End-to-end task latency p50 / p95 | 1.6 / 1.7 s |
 
-The only PII fast mode misses is a phone number drawn on a `<canvas>`, which exists only in pixels. Deep mode's OCR is there for that case. Face scores need portrait photos you have rights to: drop them into `eyes/fixtures/faces/` with a `faces.json` (format in `faces.html`).
+The only PII fast mode misses is a phone number drawn on a `<canvas>`, which exists only in pixels. Deep mode's OCR is there for that case. **Deep mode is not benchmarked yet:** the models load and run in the browser, but the weight download from Hugging Face failed on the network these numbers were measured on. Deep models load in the background, so steps keep running in fast mode until they're ready, and every deep stage has a time budget. Face scores need portrait photos you have rights to: drop them into `eyes/fixtures/faces/` with a `faces.json` (format in `faces.html`).
 
 ## Files
 

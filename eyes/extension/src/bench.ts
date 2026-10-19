@@ -3,7 +3,7 @@ import { area, intersect, matchBoxes, pixelScores, prf, Timer, type PRF } from '
 import { Vault } from '../../shared/vault'
 import { Agent, type AgentSettings } from './agent'
 import { observe, send, ensureContent, type Observation } from './pipeline'
-import { faceInfo, florenceInfo, nerInfo } from './vision'
+import { faceInfo, florenceInfo, loadFlorence, loadNer, nerInfo } from './vision'
 
 // Benchmark: opens each labelled fixture (served by the Eyes server), runs the same observe pipeline the
 // agent uses, compares it with the page's ground truth, and (optionally) runs the page's end-to-end task.
@@ -142,7 +142,7 @@ function render() {
     ['③ Redaction pixel recall', pct(pxR), pxR],
     ['④ On-device time per view p50 / p95', `${client.pct(50).toFixed(0)} / ${client.pct(95).toFixed(0)} ms`, null],
     ['④ JS heap (panel+models)', `${Math.max(0, ...results.map((r) => r.heapMB)).toFixed(0)} MB`, null],
-    ['④ Models', [faceInfo, florenceInfo, nerInfo].filter((m) => m.ready).map((m) => `${m.name} on ${m.backend}`).join(' · ') || '-', null],
+    ['④ Models', [faceInfo, florenceInfo, nerInfo].filter((m) => m.ready || m.error).map((m) => (m.ready ? `${m.name} on ${m.backend} (load ${(m.loadMs / 1000).toFixed(1)} s)` : `${m.name}: failed`)).join(' · ') || '-', null],
     ['⑤ End-to-end latency p50 / p95', e2e.length ? `${(e2eT.pct(50) / 1000).toFixed(2)} / ${(e2eT.pct(95) / 1000).toFixed(2)} s` : '-', null],
     ['⑤ Server time per step (mean)', e2e.length ? `${(e2e.reduce((a, e) => a + e.serverMs, 0) / Math.max(1, e2e.reduce((a, e) => a + e.steps, 0))).toFixed(0)} ms` : '-', null]
   ]
@@ -181,6 +181,13 @@ async function runBench() {
     onObservation: () => undefined, onPlan: () => undefined, onAction: () => undefined,
     confirm: async () => true, ask: async () => null, status: (t) => { $('status').textContent = t }
   })
+  if (s.deep) {
+    // Load the deep models first so the scores measure them (downloads ≈360 MB once, then cached).
+    $('status').textContent = 'loading deep models (first time downloads ≈360 MB)…'
+    const loads = Promise.all([loadFlorence((pct) => { $('status').textContent = `downloading Florence-2… ${Math.round(pct)}%` }), loadNer()])
+    await Promise.race([loads, sleep(10 * 60000)])
+    if (!florenceInfo.ready || !nerInfo.ready) $('status').textContent = `deep models not ready (${florenceInfo.error || nerInfo.error || 'timed out'}); scoring fast mode`
+  }
   let tab: chrome.tabs.Tab | undefined
   for (const page of list) {
     const url = `${s.serverUrl}/fixtures/${page}`
