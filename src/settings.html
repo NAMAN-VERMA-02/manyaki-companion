@@ -43,24 +43,30 @@
                 <option value="off">🚫 Off — I'll type</option>
               </select>
             </label>
+            <button class="toggle" id="q-shield">🛡️ Privacy shield</button>
             <button class="toggle" id="q-mute">🔊 Voice on</button>
             <button class="toggle" id="q-dnd">🌙 Do not disturb</button>
             <button id="q-hide">🙈 Hide 30 min</button>
-            <button id="q-here">💃 Come to the middle</button>
-            <button id="q-corner">↘️ Go to corner</button>
-            <button id="q-hi">👋 Say hi</button>
             <button id="q-reset" class="primary">🔄 Reset her</button>
-            <button id="q-look">👀 Look at my screen</button>
-            <button class="toggle" id="q-stream">🎥 Stream-safe</button>
-            <button class="toggle" id="q-private">🔒 Private mode</button>
-            <button class="toggle" id="q-attach">💞 Emotional attachment</button>
-            <label>Size
-              <select id="q-size">
-                <option value="180">Tiny</option><option value="220">Small</option><option value="260">Medium</option>
-                <option value="320">Large</option><option value="400">Huge</option>
-              </select>
-            </label>
           </div>
+          <details class="more">
+            <summary>More controls</summary>
+            <div class="controls">
+              <button id="q-here">💃 Come to the middle</button>
+              <button id="q-corner">↘️ Go to corner</button>
+              <button id="q-hi">👋 Say hi</button>
+              <button class="toggle" id="q-sense">👀 Sees my screen</button>
+              <button class="toggle" id="q-stream">🎥 Stream-safe</button>
+              <button class="toggle" id="q-private">🔒 Private mode</button>
+              <button class="toggle" id="q-attach">💞 Emotional attachment</button>
+              <label>Size
+                <select id="q-size">
+                  <option value="180">Tiny</option><option value="220">Small</option><option value="260">Medium</option>
+                  <option value="320">Large</option><option value="400">Huge</option>
+                </select>
+              </label>
+            </div>
+          </details>
         </section>
 
         <section class="card">
@@ -69,7 +75,7 @@
           <div class="meter"><span>Mood</span><div class="bar mood"><div id="h-mood"></div></div><b id="h-feeling">—</b></div>
           <div class="meter"><span>Energy</span><div class="bar energy"><div id="h-energy"></div></div><b id="h-energy-label">—</b></div>
           <p class="hint" id="h-you"></p>
-          <p class="hint">Her mood drifts with what happens (your wins, headpats, being ignored, the time of day) and she catches a little of how you feel, read on this PC from your words and tone of voice. Your bond grows a little each day you spend together.</p>
+          <p class="hint" id="h-learn"></p>
         </section>
 
         <section class="card">
@@ -201,9 +207,24 @@
         </div>
         <p class="hint">Qwen2.5-3B (thinking) · Whisper small (hearing, handles Hindi) · Kokoro (voice). Downloaded once from Hugging Face, then works with no internet.</p>
       </div>
+      <label class="check"><input id="privacyShield" type="checkbox" /> <span><b>🛡️ Privacy shield</b> — before a screenshot or anything read from your screen goes to Gemini, your private details (passwords, cards, IDs, emails, phones, names) are found on this PC and hidden</span></label>
+      <label class="check"><input id="screenSense" type="checkbox" /> <span><b>👀 She can see my screen</b> — read on this PC every few seconds and kept in memory only, so she knows what you're doing. Password managers, banking and private-browsing windows are never read.</span></label>
       <p class="hint">Either way: her memory is encrypted on this PC, personal details (phone, email, ID/card numbers, keys, your folder paths) are masked before anything goes to Gemini, and text from windows/files is treated as data — it can't make her open things.</p>
     </section>
 
+    <section>
+      <h2>What she remembers</h2>
+      <p id="mem-summary" class="hint"></p>
+      <ul id="facts"></ul>
+      <ul id="goals"></ul>
+      <div class="row">
+        <button id="export">Export…</button>
+        <button id="wipe" class="danger">Forget everything</button>
+      </div>
+    </section>
+
+    <details class="advanced">
+      <summary>Advanced</summary>
     <section>
       <h2>👁️ Manyaki Eyes (browser helper)</h2>
       <label class="check"><input id="eyesEnabled" type="checkbox" /> Run the browser-helper server on this PC (127.0.0.1:47821, pairing code required)</label>
@@ -238,21 +259,15 @@
     </section>
 
     <section>
-      <h2>What she remembers</h2>
-      <p id="mem-summary" class="hint"></p>
-      <ul id="facts"></ul>
-      <ul id="goals"></ul>
-      <div class="row">
-        <button id="export">Export…</button>
-        <button id="wipe" class="danger">Forget everything</button>
-      </div>
+      <h2>Smoothness</h2>
+      <label class="check"><input id="batterySaver" type="checkbox" /> 🔋 Battery saver: lower frame rates when she's still (less smooth)</label>
     </section>
-
     <section>
       <h2>Animations</h2>
       <p class="hint">Want smoother motion? Drop Mixamo <code>.fbx</code> (or <code>.vrma</code>) clips into the anims folder and restart her. File names pick the slot: Idle, Happy Idle, Walking, Running, Jump, Falling, Landing, Hanging, Sitting, Sit To Stand, Waving, Nodding, Shaking Head, Thinking, Talking, Excited, Bashful, Stretching, Sleeping, Clapping, Dancing.</p>
     </section>
 
+    </details>
     </main>
 
     <footer><span id="saved" class="hint"></span></footer>

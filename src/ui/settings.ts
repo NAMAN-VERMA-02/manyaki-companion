@@ -37,6 +37,9 @@ function fill(s: Settings) {
   $<HTMLTextAreaElement>('distraction').value = s.categoryRules.distraction.join(', ')
   $<HTMLInputElement>('eyesEnabled').checked = s.eyesEnabled
   $<HTMLSelectElement>('eyesPlanner').value = s.eyesPlanner
+  $<HTMLInputElement>('privacyShield').checked = s.privacyShield
+  $<HTMLInputElement>('screenSense').checked = s.screenSense
+  $<HTMLInputElement>('batterySaver').checked = s.batterySaver
 }
 
 function renderMemory(m: MemoryData) {
@@ -114,6 +117,9 @@ async function init() {
   for (const r of document.querySelectorAll<HTMLInputElement>('input[name=brain]')) r.onchange = () => save({ brainMode: r.value as Settings['brainMode'] })
   $<HTMLInputElement>('gamingwork').onchange = (e) => save({ gamingIsWork: (e.target as HTMLInputElement).checked })
   $<HTMLInputElement>('streamsafe').onchange = (e) => save({ streamSafe: (e.target as HTMLInputElement).checked })
+  $<HTMLInputElement>('privacyShield').onchange = (e) => save({ privacyShield: (e.target as HTMLInputElement).checked })
+  $<HTMLInputElement>('screenSense').onchange = (e) => save({ screenSense: (e.target as HTMLInputElement).checked })
+  $<HTMLInputElement>('batterySaver').onchange = (e) => save({ batterySaver: (e.target as HTMLInputElement).checked })
   $<HTMLInputElement>('eyesEnabled').onchange = (e) => save({ eyesEnabled: (e.target as HTMLInputElement).checked })
   $<HTMLSelectElement>('eyesPlanner').onchange = (e) => save({ eyesPlanner: (e.target as HTMLSelectElement).value as Settings['eyesPlanner'] })
   const renderLocal = (st: LocalStatus | null) => {

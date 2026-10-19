@@ -234,4 +234,10 @@ button:disabled { opacity: 0.6; cursor: default; }
 .pair { align-items: center; flex-wrap: wrap; }
 .pair code { padding: 4px 8px; border-radius: 8px; background: var(--bg); box-shadow: 0 0 0 1px var(--pink-soft); font-size: 13px; user-select: all; }
 details summary { cursor: pointer; margin-top: 8px; font-size: 13px; }
+details.more { margin-top: 10px; }
+details.more > .controls { margin-top: 8px; }
+details.advanced { margin-top: 4px; }
+details.advanced > summary { font-weight: 600; color: var(--muted); padding: 6px 2px; }
 select { min-width: 0; }
+
+@media (prefers-color-scheme: dark) { button.danger { color: #ff8aa0; } }

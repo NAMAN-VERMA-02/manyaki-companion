@@ -232,48 +232,55 @@ const command = (cmd: Command) => overlay?.webContents.send('command', cmd)
 /** Her control menu: shown from the tray icon and when you right-click her. */
 function controlMenu(): Menu {
   const s = store.getSettings()
+  // Kept short on purpose: the few things people reach for, plus one "More" for everything else.
   return Menu.buildFromTemplate([
     { label: 'Manyaki 💗', enabled: false },
-    { label: '🏠 Open Manyaki Home', click: () => openHome('home') },
+    { label: '💬 Talk to her  (Ctrl+Alt+Space)', click: () => command({ type: 'toggle-listen' }) },
+    { label: '⌨️ Type a message', click: () => command({ type: 'chat' }) },
+    { label: '🛡️ Privacy shield (hide my private details)', type: 'checkbox', checked: s.privacyShield, click: (i) => applySettings({ privacyShield: i.checked }) },
+    { label: '🌙 Do not disturb', type: 'checkbox', checked: s.dnd, click: (i) => applySettings({ dnd: i.checked }) },
+    { label: '🙈 Hide for 30 minutes', click: () => command({ type: 'hide', minutes: 30 }) },
+    { label: '🏠 Open Home', click: () => openHome('home') },
     { type: 'separator' },
-    { label: 'Talk to her  (Ctrl+Alt+Space)', click: () => command({ type: 'toggle-listen' }) },
-    { label: 'Type a message…', click: () => command({ type: 'chat' }) },
-    { label: '👀 Look at my screen  (Ctrl+Alt+E)', click: () => command({ type: 'look' }) },
     {
-      label: 'Microphone',
-      submenu: (['handsfree', 'toggle', 'off'] as const).map((m) => ({
-        label: { handsfree: 'Hands-free (she hears you speak)', toggle: 'Only when I press Ctrl+Alt+Space', off: 'Off (typing only)' }[m],
-        type: 'radio' as const,
-        checked: s.micMode === m,
-        click: () => applySettings({ micMode: m })
-      }))
+      label: 'More',
+      submenu: [
+        {
+          label: 'Microphone',
+          submenu: (['handsfree', 'toggle', 'off'] as const).map((m) => ({
+            label: { handsfree: 'Hands-free (she hears you speak)', toggle: 'Only when I press Ctrl+Alt+Space', off: 'Off (typing only)' }[m],
+            type: 'radio' as const,
+            checked: s.micMode === m,
+            click: () => applySettings({ micMode: m })
+          }))
+        },
+        { label: 'Fix microphone (Windows privacy)…', click: () => void shell.openExternal('ms-settings:privacy-microphone') },
+        { label: 'Mute her voice (text bubble only)', type: 'checkbox', checked: s.voiceMuted, click: (i) => applySettings({ voiceMuted: i.checked }) },
+        { label: '👀 She can see my screen', type: 'checkbox', checked: s.screenSense, click: (i) => applySettings({ screenSense: i.checked }) },
+        { label: '💞 Emotional attachment (sulks, cries, letters)', type: 'checkbox', checked: s.emotionalAttachment, click: (i) => applySettings({ emotionalAttachment: i.checked }) },
+        { type: 'separator' },
+        { label: `Start focus (${s.focusMinutes} min)`, click: () => command({ type: 'focus-start' }) },
+        { label: 'Stop focus', click: () => command({ type: 'focus-stop' }) },
+        { type: 'separator' },
+        { label: '🎥 Stream-safe mode', type: 'checkbox', checked: s.streamSafe, click: (i) => applySettings({ streamSafe: i.checked }) },
+        { label: '🔋 Battery saver (less smooth)', type: 'checkbox', checked: s.batterySaver, click: (i) => applySettings({ batterySaver: i.checked }) },
+        { label: 'Send her to the corner', click: () => command({ type: 'corner' }) },
+        { label: '🔄 Reset her position', click: () => command({ type: 'reset' }) },
+        {
+          label: 'Size',
+          submenu: [180, 220, 260, 320, 400].map((px) => ({
+            label: { 180: 'Tiny', 220: 'Small', 260: 'Medium', 320: 'Large', 400: 'Huge' }[px]!,
+            type: 'radio' as const,
+            checked: s.size === px,
+            click: () => applySettings({ size: px })
+          }))
+        },
+        { type: 'separator' },
+        { label: 'Settings…', click: openSettings },
+        { label: 'Launch at login', type: 'checkbox', checked: s.launchAtLogin, click: (i) => applySettings({ launchAtLogin: i.checked }) },
+        { label: 'Open log folder', click: () => shell.showItemInFolder(logFile()) }
+      ]
     },
-    { label: 'Fix microphone (Windows privacy)…', click: () => void shell.openExternal('ms-settings:privacy-microphone') },
-    { label: 'Mute her voice (text bubble only)', type: 'checkbox', checked: s.voiceMuted, click: (i) => applySettings({ voiceMuted: i.checked }) },
-    { label: '💞 Emotional attachment (sulks, cries, letters)', type: 'checkbox', checked: s.emotionalAttachment, click: (i) => applySettings({ emotionalAttachment: i.checked }) },
-    { label: 'Hide her for 30 minutes', click: () => command({ type: 'hide', minutes: 30 }) },
-    { type: 'separator' },
-    { label: `Start focus (${s.focusMinutes} min)`, click: () => command({ type: 'focus-start' }) },
-    { label: 'Stop focus', click: () => command({ type: 'focus-stop' }) },
-    { type: 'separator' },
-    { label: 'Do not disturb', type: 'checkbox', checked: s.dnd, click: (i) => applySettings({ dnd: i.checked }) },
-    { label: '🎥 Stream-safe mode', type: 'checkbox', checked: s.streamSafe, click: (i) => applySettings({ streamSafe: i.checked }) },
-    { label: 'Send her to the corner', click: () => command({ type: 'corner' }) },
-    { label: '🔄 Reset her position', click: () => command({ type: 'reset' }) },
-    {
-      label: 'Size',
-      submenu: [180, 220, 260, 320, 400].map((px) => ({
-        label: { 180: 'Tiny', 220: 'Small', 260: 'Medium', 320: 'Large', 400: 'Huge' }[px]!,
-        type: 'radio' as const,
-        checked: s.size === px,
-        click: () => applySettings({ size: px })
-      }))
-    },
-    { type: 'separator' },
-    { label: 'Settings…', click: openSettings },
-    { label: 'Launch at login', type: 'checkbox', checked: s.launchAtLogin, click: (i) => applySettings({ launchAtLogin: i.checked }) },
-    { label: 'Open log folder', click: () => shell.showItemInFolder(logFile()) },
-    { type: 'separator' },
     { label: 'Quit', click: () => app.quit() }
   ])
 }
@@ -315,6 +322,7 @@ function startSenseLoop() {
     if (key && key !== lastGlanceKey) {
       lastGlanceKey = key
       overlay?.webContents.send('glance', g)
+      if (g) log('info', `glance: ${g.private ? 'private window' : `${g.app}, ${g.lines.length} lines`}${g.error ? ', error on screen' : ''}`)
     }
   }, 5000)
 }

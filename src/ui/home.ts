@@ -59,6 +59,7 @@ function renderHeart() {
   if (h.youSeem) parts.push(`You seem ${h.youSeem} right now.`)
   if (h.trend) parts.push(`This week you've seemed ${h.trend}.`)
   $('h-you').textContent = parts.join(' ')
+  $('h-learn').textContent = h.lessons ? `She has learned from ${h.lessons} of your reactions to her.` : 'She learns how to react to you from how you respond (pats, thanks, "stop").'
 }
 
 let eyes: EyesInfo | null = null
@@ -105,6 +106,10 @@ function renderSettings() {
   $('q-stream').textContent = s.streamSafe ? '🎥 Stream-safe: on' : '🎥 Stream-safe'
   $('q-private').classList.toggle('on', s.brainMode === 'private')
   $('q-private').textContent = s.brainMode === 'private' ? '🔒 Private: on' : '🔒 Private mode'
+  $('q-shield').classList.toggle('on', s.privacyShield)
+  $('q-shield').textContent = s.privacyShield ? '🛡️ Privacy shield: on' : '🛡️ Privacy shield: off'
+  $('q-sense').classList.toggle('on', s.screenSense)
+  $('q-sense').textContent = s.screenSense ? '👀 Sees my screen: on' : '👀 Sees my screen: off'
   $('q-attach').classList.toggle('on', s.emotionalAttachment)
   $('q-attach').textContent = s.emotionalAttachment ? '💞 Emotional attachment: on' : '💼 Professional (attachment off)'
   if (document.activeElement !== $('focus-min')) $<HTMLInputElement>('focus-min').value = String(s.focusMinutes)
@@ -211,7 +216,8 @@ export async function initHome() {
   $('q-corner').onclick = () => bridge.sendCommand({ type: 'corner' })
   $('q-hi').onclick = () => bridge.sendCommand({ type: 'say-hi' })
   $('q-reset').onclick = () => bridge.sendCommand({ type: 'reset' })
-  $('q-look').onclick = () => bridge.sendCommand({ type: 'look' })
+  $('q-shield').onclick = () => void save({ privacyShield: !settings?.privacyShield })
+  $('q-sense').onclick = () => void save({ screenSense: !settings?.screenSense })
   $('q-stream').onclick = () => void save({ streamSafe: !settings?.streamSafe })
   $('q-attach').onclick = () => void save({ emotionalAttachment: !settings?.emotionalAttachment })
   $('q-private').onclick = () => void save({ brainMode: settings?.brainMode === 'private' ? 'auto' : 'private' })

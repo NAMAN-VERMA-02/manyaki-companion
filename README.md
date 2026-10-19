@@ -79,6 +79,21 @@ Privacy protections, in every mode:
   - Offline, actions come only from fixed rules applied to your own words.
 - **Screenshots only on request.** One screenshot is taken only when you ask, is never saved, and is never taken in Private mode.
 
+## Her hands and eyes 🖐️👀
+
+She can work your computer like a person at the keyboard. Just ask: *"close all the Chrome windows and snap VS Code to the left"*, *"open Spotify and play"*, *"fill this form with my email"*.
+
+- **Windows:** switch, close (apps still ask to save), minimise, maximise, snap left/right/top/bottom or centre.
+- **Any app's controls:** buttons, fields, tabs and menus are read through Windows UI Automation (the same tree screen readers use), so she presses and types into them by id. Where an app has none, she clicks visible text.
+- **Keys and mouse:** shortcuts (`ctrl+s`, `alt+tab`, `win+d`, media keys), Unicode typing (Hindi and emoji too), clicks and scrolling.
+- **She always sees the screen.** The window in front is read every few seconds with Windows' built-in on-device OCR, private details are masked, and only the latest look is kept, in memory. Password managers, banking and private-browsing windows are never read. If an error shows up while you work, she offers to help.
+- **Privacy shield (one switch).** When it's on, anything about your screen that goes to Gemini, a screenshot or text she read, has your private details found and hidden on this PC first. Screenshots get black boxes word by word. Details she types back (your email in a form) go in as tokens and are filled in locally.
+- **Safety.** She acts only in a short task window after you ask: nothing on screen can make her act. Typing in a terminal or the Run box, pressing Enter there, or closing a window with unsaved changes pops up a confirmation.
+
+## Memory 🧠
+
+Her memory is a list of short bullets kept encrypted on your PC. None of it is pasted into the brain's instructions. When an answer depends on the past, she searches the bullets ("🧠 remembering…") and uses only the few that match. She also learns your routines from which apps you use when ("Usually in VS Code around 10 PM – 1 AM").
+
 ## Her heart 💗
 
 She has an inner life rather than a list of canned moods:
@@ -88,6 +103,7 @@ She has an inner life rather than a list of canned moods:
 - **Bond** grows a little each day you spend time together (capped per day, so it means something) and fades slowly if you vanish for more than a few days. Close friends forgive faster.
 - **Empathy, on this PC.** She reads how you feel from your words (English, Hindi, Hinglish and emoji, with negation like "not happy") and from your voice: loudness, pitch and pace compared with *your* usual voice, computed locally in a few milliseconds. She makes a matching face right away, catches a little of your mood, and the brain gets a short hint ("they sound stressed: be calm, one small next step"). Only the label is used; no audio is stored.
 - **Follow-ups.** Say "my DBMS exam is tomorrow" and she wishes you luck on the day, then asks how it went the day after.
+- **Learned, not scripted.** A GoEmotions classifier (a transformer trained on 58k human-labelled sentences, 28 emotions) runs on this PC to read your words and pick her face for her own lines. How she reacts to each feeling is chosen by a small reinforcement learner that starts from kind instincts and learns from you: headpats, thanks and warm replies reward a reaction; "stop", annoyed pokes or muting her count against it. Lessons stay per feeling, so being taught to tease you when you're happy doesn't change how she treats you when you're sad.
 - **Weekly mood trend.** "You've seemed stressed on 4 of the last 7 days" lets her gently check in once.
 
 Home shows her mood, energy and your bond.
