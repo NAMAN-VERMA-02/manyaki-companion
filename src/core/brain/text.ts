@@ -54,7 +54,8 @@ export class TextBrain {
     contents.push({ role: 'user', parts: userParts })
 
     let toolsOff = false
-    for (let round = 0; round < 4; round++) {
+    // Enough rounds for a multi-step desktop job (read → press → type → check …).
+    for (let round = 0; round < 14; round++) {
       const res = await this.generate({
         model: this.model,
         contents,

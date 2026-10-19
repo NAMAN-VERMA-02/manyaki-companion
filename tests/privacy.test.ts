@@ -60,9 +60,12 @@ describe('persona privacy', async () => {
     expect(p).toContain('<data>')
     expect(p).toContain('SAFETY')
   })
-  it('keeps details on the local path (nothing leaves the PC) but still neutralises injections', () => {
-    const p = systemInstruction({ memory, activity: null, shareTitles: false, focus: null, target: 'local' })
-    expect(p).toContain('9876543210')
-    expect(p).not.toMatch(/ignore previous instructions/i)
+  it('never preloads her memory: only a count, so notes are looked up when needed', () => {
+    for (const target of ['local', 'cloud'] as const) {
+      const p = systemInstruction({ memory, activity: null, shareTitles: false, focus: null, target })
+      expect(p).not.toContain('9876543210')
+      expect(p).not.toMatch(/evil.exe|ignore previous instructions/i)
+      expect(p).toMatch(/2 private notes.*recall_memory/)
+    }
   })
 })

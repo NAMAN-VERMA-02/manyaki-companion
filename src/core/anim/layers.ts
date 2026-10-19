@@ -76,8 +76,17 @@ export class Layers {
     this.offset('head', -this.pitch * 0.55 * w, this.yaw * 0.6 * w, this.curTilt * D + Math.sin(this.t * 0.7) * 1.2 * D)
 
     // Eyes follow even when the head can't (e.g. while asleep the weight is 0 and eyes are closed anyway).
-    a.toWorld(this.target.x, this.target.y, a.modelMetres * 1.6, this.lookTarget.position)
+    // The cursor arrives ~20 times a second; easing the gaze point (fast, but not instant) keeps the eyes
+    // from ticking between those updates. A big jump (a glance away) still lands in ~0.15 s.
+    if (!this.eyeInit) { this.eye.x = this.target.x; this.eye.y = this.target.y; this.eyeInit = true }
+    const ke = 1 - Math.exp(-dt * 18)
+    this.eye.x += (this.target.x - this.eye.x) * ke
+    this.eye.y += (this.target.y - this.eye.y) * ke
+    a.toWorld(this.eye.x, this.eye.y, a.modelMetres * 1.6, this.lookTarget.position)
   }
+
+  private readonly eye = { x: 0, y: 0 }
+  private eyeInit = false
 
   private offset(b: VRMHumanBoneName, x: number, y: number, z: number) {
     const node = this.avatar.bone(b)

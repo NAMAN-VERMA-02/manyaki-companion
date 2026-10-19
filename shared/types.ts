@@ -50,6 +50,46 @@ export interface Settings {
   eyesEnabled: boolean
   /** Who plans browser actions: auto (Ollama if installed, else Gemini, else rules), or one of them. */
   eyesPlanner: 'auto' | 'ollama' | 'gemini' | 'rules'
+  /**
+   * Privacy shield: before anything about the screen leaves this PC (a screenshot, text read from it),
+   * private details are found on-device and hidden. The one privacy switch on the main menu.
+   */
+  privacyShield: boolean
+  /** She keeps an eye on the screen (read on this PC, never stored) so she knows what you're doing. */
+  screenSense: boolean
+  /** Lower frame rates to save battery (Advanced). */
+  batterySaver: boolean
+}
+
+/** What she last saw on screen (on-device OCR, private details masked). Lives in memory only. */
+export interface Glance {
+  app: string
+  title: string
+  lines: string[]
+  /** An error message visible on screen, if any (for a gentle offer to help). */
+  error: string | null
+  at: number
+  /** A password manager, bank or private-browsing window: not read at all. */
+  private: boolean
+}
+
+export type WindowOp = 'focus' | 'close' | 'minimize' | 'maximize' | 'restore' | 'snap_left' | 'snap_right' | 'snap_top' | 'snap_bottom' | 'center'
+
+/** Her hands on the desktop (electron/desk.ts). Every method resolves with a short result for the brain. */
+export interface DeskBridge {
+  windows(): Promise<string>
+  windowAction(query: string, op: WindowOp): Promise<string>
+  closeAll(query: string): Promise<string>
+  readApp(query?: string): Promise<string>
+  press(id: string): Promise<string>
+  typeInto(id: string, text: string): Promise<string>
+  type(text: string): Promise<string>
+  keys(combo: string): Promise<string>
+  scroll(direction: 'up' | 'down', amount?: number): Promise<string>
+  clickText(text: string, double?: boolean): Promise<string>
+  seeScreen(): Promise<string>
+  /** One screenshot for a vision model, redacted on this PC when the privacy shield is on. */
+  screenshot(): Promise<{ image: string; hidden: number } | { error: string }>
 }
 
 /** The browser agent server she hosts (see electron/eyes.ts). */
@@ -75,8 +115,10 @@ export interface EyesEventMsg {
 
 import type { FollowUp } from './followups'
 import type { MoodDay, VoiceBaseline } from './empathy'
+import type { Usage } from './patterns'
 
-export interface Fact { text: string; at: number }
+/** One bullet of her memory. `uses`: how often it helped answer something (ranks it higher). */
+export interface Fact { text: string; at: number; uses?: number; kind?: 'fact' | 'routine' }
 export interface Goal { id: string; text: string; done: boolean; day: string }
 export interface Turn { role: 'user' | 'her'; text: string; at: number }
 
@@ -97,6 +139,8 @@ export interface MemoryData {
   moodLog: MoodDay[]
   /** Their usual voice (loudness, pitch, pace), so she can tell when they sound different. */
   voiceBaseline: VoiceBaseline
+  /** Minutes per app per hour of the week, to learn their routines (on this PC). */
+  usage: Usage
 }
 
 export const DEFAULT_SETTINGS: Settings = {
@@ -125,7 +169,10 @@ export const DEFAULT_SETTINGS: Settings = {
   },
   onboarded: false,
   eyesEnabled: true,
-  eyesPlanner: 'auto'
+  eyesPlanner: 'auto',
+  privacyShield: true,
+  screenSense: true,
+  batterySaver: false
 }
 
 export const EMPTY_MEMORY: MemoryData = {
@@ -140,7 +187,8 @@ export const EMPTY_MEMORY: MemoryData = {
   affect: null,
   followUps: [],
   moodLog: [],
-  voiceBaseline: { energy: 0, pitchHz: 0, pitchVar: 0, rate: 0, n: 0 }
+  voiceBaseline: { energy: 0, pitchHz: 0, pitchVar: 0, rate: 0, n: 0 },
+  usage: { apps: {}, days: {} }
 }
 
 // The surface the preload script exposes on window.manyaki.
@@ -183,6 +231,8 @@ export interface Bridge {
     transcribe(audio: Float32Array): Promise<{ text: string; ms: number }>
     tts(text: string, voice: string): Promise<{ samples: Float32Array; rate: number; ms: number }>
   }
+  /** Desktop control: windows, apps' controls, keys, mouse, screen. */
+  desk: DeskBridge
   /** Browser agent (Manyaki Eyes): queue a task for the extension, read the server's state. */
   eyes: {
     task(text: string): Promise<boolean>
@@ -211,6 +261,7 @@ export interface Bridge {
   on(channel: 'tab', cb: (tab: string) => void): () => void
   on(channel: 'local-status', cb: (s: LocalStatus) => void): () => void
   on(channel: 'eyes', cb: (e: EyesEventMsg) => void): () => void
+  on(channel: 'glance', cb: (g: Glance | null) => void): () => void
 }
 
 export interface LocalStatus {

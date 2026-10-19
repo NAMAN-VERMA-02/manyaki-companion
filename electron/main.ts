@@ -8,6 +8,8 @@ import { startActivityWatcher } from './activity'
 import * as store from './store'
 import { runAction, type ActionKind } from './actions'
 import { eyesInfo, eyesTask, newPairingCode, setEyesProvider, startEyes, stopEyes } from './eyes'
+import * as desk from './desk'
+import type { ActivitySnapshot, WindowOp } from '../shared/types'
 
 // ---------- offline brain (utility process) ----------
 let brain: ChildProcess | null = null
@@ -301,8 +303,26 @@ async function syncEyes() {
   log('info', `eyes server ${info.running ? `on :${info.port}` : `off (${info.error})`}`)
 }
 
+// ---------- screen sense: she always knows what's in front (on-device, redacted, memory only) ----------
+let lastActivity: ActivitySnapshot | null = null
+let lastGlanceKey = ''
+function startSenseLoop() {
+  setInterval(async () => {
+    const s = store.getSettings()
+    if (!s.screenSense || s.dnd || !lastActivity || lastActivity.category === 'self') return
+    const g = await desk.senseOnce({ idleSeconds: lastActivity.idleSeconds, fullscreen: lastActivity.fullscreen })
+    const key = g ? `${g.at}` : ''
+    if (key && key !== lastGlanceKey) {
+      lastGlanceKey = key
+      overlay?.webContents.send('glance', g)
+    }
+  }, 5000)
+}
+
 function applySettings(patch: Partial<Settings>): Settings {
   const next = store.setSettings(patch)
+  if ('privacyShield' in patch) desk.setShield(next.privacyShield)
+  if ('screenSense' in patch && !next.screenSense) { desk.clearGlance(); overlay?.webContents.send('glance', null) }
   if ('eyesEnabled' in patch) void syncEyes()
   else if ('eyesPlanner' in patch) setEyesProvider(next, store.getApiKey())
   if ('launchAtLogin' in patch && app.isPackaged) app.setLoginItemSettings({ openAtLogin: next.launchAtLogin })
@@ -340,6 +360,28 @@ function registerIpc() {
       setEyesProvider(store.getSettings(), store.getApiKey())
     }
     return ok
+  })
+  // Desktop hands: only her own windows may drive them.
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const deskOp = <A extends any[]>(name: string, f: (...a: A) => Promise<unknown>) =>
+    ipcMain.handle(`desk:${name}`, async (e, ...args) => {
+      if (!fromOurWindow(e.sender)) return 'not allowed'
+      try { return await f(...(args as A)) } catch (err) { log('warn', `desk ${name}: ${(err as Error).message}`); return `failed: ${(err as Error).message}` }
+    })
+  deskOp('windows', () => desk.listWindows())
+  deskOp('window', (q: string, op: WindowOp) => desk.windowAction(String(q), op))
+  deskOp('close-all', (q: string) => desk.closeAll(String(q)))
+  deskOp('read-app', (q?: string) => desk.readApp(q ? String(q) : undefined))
+  deskOp('press', (id: string) => desk.pressControl(String(id)))
+  deskOp('type-into', (id: string, t: string) => desk.typeInto(String(id), String(t)))
+  deskOp('type', (t: string) => desk.typeText(String(t)))
+  deskOp('keys', (c: string) => desk.pressKeys(String(c)))
+  deskOp('scroll', (d: 'up' | 'down', n?: number) => desk.scroll(d === 'up' ? 'up' : 'down', Number(n) || 3))
+  deskOp('click-text', (t: string, dbl?: boolean) => desk.clickText(String(t), !!dbl))
+  deskOp('see', () => desk.seeScreen())
+  ipcMain.handle('desk:screenshot', async (e) => {
+    if (!fromOurWindow(e.sender)) return { error: 'not allowed' }
+    try { return await desk.screenshotForModel() } catch (err) { return { error: (err as Error).message } }
   })
   ipcMain.handle('eyes:task', (e, text: string) => (fromOurWindow(e.sender) ? eyesTask(String(text).slice(0, 500)) : false))
   ipcMain.handle('eyes:info', () => eyesInfo())
@@ -453,10 +495,15 @@ app.whenReady().then(() => {
   session.defaultSession.setPermissionRequestHandler((_wc, permission, cb) => cb(permission === 'media' || permission === 'notifications'))
   session.defaultSession.setPermissionCheckHandler((_wc, permission) => permission === 'media' || permission === 'notifications')
 
+  desk.initDesk({ script: join(assetsRoot(), 'desk', 'host.ps1'), log })
+  desk.setShield(store.getSettings().privacyShield)
   registerIpc()
   createOverlay()
   buildTray()
   void syncEyes()
+  // Warm her hands a few seconds after start so the first request is instant.
+  setTimeout(() => void desk.warmDesk(), 6000)
+  startSenseLoop()
   if (app.isPackaged) app.setLoginItemSettings({ openAtLogin: store.getSettings().launchAtLogin })
 
   globalShortcut.register('Control+Alt+Space', () => command({ type: 'toggle-listen' }))
@@ -474,7 +521,7 @@ app.whenReady().then(() => {
     overlay.webContents.send('cursor', { x: p.x - d.x, y: p.y - d.y })
   }, 50)
 
-  stopActivity = startActivityWatcher(process.pid, (a) => overlay?.webContents.send('activity', a))
+  stopActivity = startActivityWatcher(process.pid, (a) => { lastActivity = a; overlay?.webContents.send('activity', a) })
 
   const onDisplay = () => {
     const info = displayInfo()
@@ -492,7 +539,7 @@ app.whenReady().then(() => {
   log('info', `Manyaki started; data at ${store.storePath()}`)
 })
 
-app.on('before-quit', () => { quitting = true; brain?.kill(); void stopEyes() })
+app.on('before-quit', () => { quitting = true; brain?.kill(); void stopEyes(); desk.stopDesk() })
 
 app.on('will-quit', () => {
   globalShortcut.unregisterAll()

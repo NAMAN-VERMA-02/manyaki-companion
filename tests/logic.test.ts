@@ -30,7 +30,7 @@ describe('memory', () => {
     let f = mem.mergeFacts([], ['Has a DSA exam on Nov 3'], 1)
     f = mem.mergeFacts(f, ['has a DSA exam on Nov 3!', 'Likes matcha'], 2)
     expect(f.map((x) => x.text)).toEqual(['has a DSA exam on Nov 3!', 'Likes matcha'])
-    const many = mem.mergeFacts([], Array.from({ length: 70 }, (_, i) => `fact number ${i} about unique topic${i}`))
+    const many = mem.mergeFacts([], Array.from({ length: 320 }, (_, i) => `fact number ${i} about unique topic${i}`))
     expect(many).toHaveLength(mem.MAX_FACTS)
   })
   it('merges streaming transcript pieces from the same speaker', () => {
@@ -166,7 +166,9 @@ describe('tools', () => {
     setUserName: (n) => `name ${n}`,
     openThing: async (k, t) => `${k} ${t}`,
     lookAtScreen: async (q) => `looked: ${q}`,
-    browserTask: async (t) => `browser: ${t}`
+    browserTask: async (t) => `browser: ${t}`,
+    desk: async (op, a) => `desk ${op} ${JSON.stringify(a)}`,
+    recall: async (q) => `recall ${q}`
   }
   it('validates arguments and never throws', async () => {
     expect(await runTool(host, 'react', { emotion: 'nope', action: 'dance', emote: 'heart' })).toEqual({ ok: true })
@@ -176,6 +178,8 @@ describe('tools', () => {
     expect(await runTool(host, 'open_folder', { name: 'Downloads' })).toEqual({ result: 'folder Downloads' })
     expect(await runTool(host, 'open_website', { target: 'youtube' })).toEqual({ result: 'website youtube' })
     expect(await runTool(host, 'browser_task', { task: 'search for earbuds' })).toEqual({ result: 'browser: search for earbuds' })
+    expect(await runTool(host, 'window', { which: 'chrome', action: 'close' })).toEqual({ result: 'desk window {"which":"chrome","action":"close"}' })
+    expect(await runTool(host, 'recall_memory', { query: 'exam' })).toEqual({ result: 'recall exam' })
     expect(await runTool(host, 'mystery')).toHaveProperty('error')
   })
 })
@@ -208,7 +212,8 @@ describe('persona', () => {
     const p = systemInstruction({ memory, activity, shareTitles: false, focus: { kind: 'focus', minutesLeft: 12 } })
     expect(p).toContain('THEIR NAME: Naman')
     expect(p).toContain('Revise graphs')
-    expect(p).toContain('DSA exam Nov 3')
+    expect(p).not.toContain('DSA exam Nov 3') // bullets stay local; she uses recall_memory
+    expect(p).toContain('1 private notes')
     expect(p).toContain('12 min left')
     expect(p).toContain('the browser (work)')
     expect(p).not.toContain('secret doc title')

@@ -33,6 +33,20 @@ const bridge: Bridge = {
     transcribe: (audio) => ipcRenderer.invoke('local:transcribe', audio),
     tts: (text, voice) => ipcRenderer.invoke('local:tts', text, voice)
   },
+  desk: {
+    windows: () => ipcRenderer.invoke('desk:windows'),
+    windowAction: (q, op) => ipcRenderer.invoke('desk:window', q, op),
+    closeAll: (q) => ipcRenderer.invoke('desk:close-all', q),
+    readApp: (q) => ipcRenderer.invoke('desk:read-app', q),
+    press: (id) => ipcRenderer.invoke('desk:press', id),
+    typeInto: (id, t) => ipcRenderer.invoke('desk:type-into', id, t),
+    type: (t) => ipcRenderer.invoke('desk:type', t),
+    keys: (c) => ipcRenderer.invoke('desk:keys', c),
+    scroll: (d, n) => ipcRenderer.invoke('desk:scroll', d, n),
+    clickText: (t, dbl) => ipcRenderer.invoke('desk:click-text', t, dbl),
+    seeScreen: () => ipcRenderer.invoke('desk:see'),
+    screenshot: () => ipcRenderer.invoke('desk:screenshot')
+  },
   eyes: {
     task: (text) => ipcRenderer.invoke('eyes:task', text),
     info: () => ipcRenderer.invoke('eyes:info'),
