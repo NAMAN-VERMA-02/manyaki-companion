@@ -188,8 +188,19 @@ export async function pressKeys(combo: string): Promise<string> {
   return `pressed ${combo}`
 }
 
-export async function scroll(direction: 'up' | 'down', amount = 3): Promise<string> {
-  await call('scroll', { x: -1, y: -1, clicks: (direction === 'up' ? 1 : -1) * Math.max(1, Math.min(15, Math.round(amount))) })
+/** Scrolls the page in the window in front (at its centre, not wherever the mouse happens to be). */
+export async function scroll(direction: 'up' | 'down' | 'top' | 'bottom', amount = 3): Promise<string> {
+  const w = await activeWin()
+  const x = w ? Math.round(w.x + w.w / 2) : -1
+  const y = w ? Math.round(w.y + w.h * 0.6) : -1
+  lastKey = '' // what's visible changes: the next look must be fresh
+  if (direction === 'top' || direction === 'bottom') {
+    // Home/End only work once the page has focus; a click in the middle of the page gives it focus.
+    if (w) await call('click', { x, y, button: 'left', double: false }).catch(() => undefined)
+    await call('keys', { combo: direction === 'top' ? 'ctrl+home' : 'ctrl+end' })
+    return `went to the ${direction} of the page`
+  }
+  await call('scroll', { x, y, clicks: (direction === 'up' ? 1 : -1) * Math.max(1, Math.min(15, Math.round(amount))) })
   return `scrolled ${direction}`
 }
 
@@ -263,7 +274,7 @@ export async function senseOnce(opts: { idleSeconds: number; fullscreen: boolean
     await call('forget')
     // Glances are always redacted with masks (not tokens): they're for awareness, not for typing.
     const { text } = redactOcr(lines, null, true)
-    const kept = text.map((t) => t.trim()).filter((t) => t.length > 1).slice(0, 60)
+    const kept = text.map((t) => t.trim()).filter((t) => t.length > 1).slice(0, 90)
     glance = { app: w.app, title: hide(w.title, null, true).slice(0, 120), lines: kept, error: errorOnScreen(kept), at: Date.now(), private: false }
     return glance
   } catch (e) {
@@ -279,9 +290,10 @@ export function clearGlance() { glance = null; lastKey = '' }
 
 /** What's on screen right now, for the brain (latest glance; refreshed if it's stale). */
 export async function seeScreen(): Promise<string> {
-  if (!glance || Date.now() - glance.at > 15000) { lastKey = ''; await senseOnce({ idleSeconds: 0, fullscreen: false }) }
+  // Read fresh (≈1 s) unless the last look is only a moment old: she must talk about what's there now.
+  if (!glance || Date.now() - glance.at > 2500) { lastKey = ''; await senseOnce({ idleSeconds: 0, fullscreen: false }) }
   const g = glance
   if (!g) return 'I can\'t see the screen right now'
   if (g.private) return `${g.app} is open (a private window, so I don't read it)`
-  return `In front: ${g.app}: ${g.title}\nVisible text (private details hidden):\n${g.lines.slice(0, 45).join('\n')}`
+  return `In front: ${g.app}: ${g.title}\nVisible text, top to bottom (private details masked):\n${g.lines.join('\n')}`
 }

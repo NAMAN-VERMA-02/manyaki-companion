@@ -85,7 +85,7 @@ export interface DeskBridge {
   typeInto(id: string, text: string): Promise<string>
   type(text: string): Promise<string>
   keys(combo: string): Promise<string>
-  scroll(direction: 'up' | 'down', amount?: number): Promise<string>
+  scroll(direction: 'up' | 'down' | 'top' | 'bottom', amount?: number): Promise<string>
   clickText(text: string, double?: boolean): Promise<string>
   seeScreen(): Promise<string>
   /** One screenshot for a vision model, redacted on this PC when the privacy shield is on. */

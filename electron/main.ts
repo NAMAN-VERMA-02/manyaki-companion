@@ -384,7 +384,7 @@ function registerIpc() {
   deskOp('type-into', (id: string, t: string) => desk.typeInto(String(id), String(t)))
   deskOp('type', (t: string) => desk.typeText(String(t)))
   deskOp('keys', (c: string) => desk.pressKeys(String(c)))
-  deskOp('scroll', (d: 'up' | 'down', n?: number) => desk.scroll(d === 'up' ? 'up' : 'down', Number(n) || 3))
+  deskOp('scroll', (d: string, n?: number) => desk.scroll(d === 'up' || d === 'top' || d === 'bottom' ? d : 'down', Number(n) || 3))
   deskOp('click-text', (t: string, dbl?: boolean) => desk.clickText(String(t), !!dbl))
   deskOp('see', () => desk.seeScreen())
   ipcMain.handle('desk:screenshot', async (e) => {

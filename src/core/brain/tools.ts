@@ -155,8 +155,8 @@ export function toolDeclarations(live: boolean): FunctionDeclaration[] {
     },
     {
       name: 'scroll',
-      description: 'Scroll the window under the mouse up or down.',
-      parameters: { type: Type.OBJECT, properties: { direction: { type: Type.STRING, enum: ['up', 'down'] }, amount: { type: Type.NUMBER, description: '1-15 notches, default 3' } }, required: ['direction'] }
+      description: 'Scroll the page in the window in front: up/down by some notches, or jump to the top/bottom of the page.',
+      parameters: { type: Type.OBJECT, properties: { direction: { type: Type.STRING, enum: ['up', 'down', 'top', 'bottom'] }, amount: { type: Type.NUMBER, description: '1-15 notches, default 3 (about a third of a screen)' } }, required: ['direction'] }
     },
     {
       name: 'recall_memory',

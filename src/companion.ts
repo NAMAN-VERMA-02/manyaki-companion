@@ -207,6 +207,8 @@ export class Companion implements ToolHost {
       this.stage.chip.set(s.brainMode === 'private' ? '🔒 private mode: everything stays on this PC' : '☁️ auto mode: Gemini when online', '', 4000)
     }
     if (prev?.voiceName !== s.voiceName) this.live.close()
+    // She must answer truthfully about what she can see: reconnect with the new shield/sense state.
+    if (prev && (prev.privacyShield !== s.privacyShield || prev.screenSense !== s.screenSense)) this.live.close()
     if (prev && prev.emotionalAttachment !== s.emotionalAttachment) {
       // New character: reconnect with the new persona and re-read it in the offline brain.
       this.live.close()
@@ -233,6 +235,8 @@ export class Companion implements ToolHost {
       homeDir: this.bridge.homeDir,
       streamSafe: this.settings.streamSafe,
       playful: this.settings.emotionalAttachment,
+      shield: this.settings.privacyShield,
+      screenSense: this.settings.screenSense,
       ...this.heartContext()
     })
   }
@@ -692,7 +696,11 @@ export class Companion implements ToolHost {
       case 'type_text': r = await d.type(s('text')); break
       case 'press_keys': r = await d.keys(s('keys')); break
       case 'click_on': r = await d.clickText(s('text'), args.double === true); break
-      case 'scroll': r = await d.scroll(s('direction') === 'up' ? 'up' : 'down', Number(args.amount) || 3); break
+      case 'scroll': {
+        const dir = s('direction')
+        r = await d.scroll(dir === 'up' || dir === 'top' || dir === 'bottom' ? dir : 'down', Number(args.amount) || 3)
+        break
+      }
       default: r = 'unknown'
     }
     if (!readOnly && !/^(blocked|failed|no |the user said no|i can't)/i.test(r)) this.taskUntil = Math.max(this.taskUntil, Date.now() + 60000)

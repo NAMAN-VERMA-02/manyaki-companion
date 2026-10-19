@@ -60,6 +60,13 @@ describe('persona privacy', async () => {
     expect(p).toContain('<data>')
     expect(p).toContain('SAFETY')
   })
+  it('tells her the truth about the privacy shield and how to read along', () => {
+    const off = systemInstruction({ memory, activity: null, shareTitles: false, focus: null, shield: false, screenSense: true })
+    expect(off).toMatch(/privacy shield is OFF: screenshots you look at are not redacted/)
+    expect(off).toMatch(/READING FROM THE SCREEN: .*scroll direction "top".*see_screen/)
+    expect(systemInstruction({ memory, activity: null, shareTitles: false, focus: null, shield: true })).toMatch(/privacy shield is ON/)
+    expect(systemInstruction({ memory, activity: null, shareTitles: false, focus: null, screenSense: false })).toMatch(/cannot see their screen/)
+  })
   it('never preloads her memory: only a count, so notes are looked up when needed', () => {
     for (const target of ['local', 'cloud'] as const) {
       const p = systemInstruction({ memory, activity: null, shareTitles: false, focus: null, target })
