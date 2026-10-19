@@ -5,6 +5,7 @@
 //   think      Qwen2.5-3B-Instruct (GGUF, llama.cpp; Vulkan on the iGPU when available)
 //   hear       Whisper small (ONNX, multilingual — handles Hindi/Hinglish)
 //   speak      Kokoro-82M (ONNX, English voices)
+//   feel       a GoEmotions classifier (28 emotions, trained on 58k human-labelled sentences)
 
 import { existsSync, mkdirSync, readdirSync, statSync } from 'node:fs'
 import { join } from 'node:path'
@@ -16,6 +17,7 @@ type In =
   | { id: number; type: 'chat'; system: string; history: { role: 'user' | 'her'; text: string }[]; text: string; teach?: boolean }
   | { id: number; type: 'transcribe'; audio: Float32Array }
   | { id: number; type: 'tts'; text: string; voice: string }
+  | { id: number; type: 'emotion'; texts: string[] }
 
 export interface LocalStatus {
   llm: 'missing' | 'downloading' | 'ready' | 'loaded'
@@ -239,6 +241,45 @@ async function chat(system: string, _history: { role: 'user' | 'her'; text: stri
   return { say, ms: Date.now() - t0 }
 }
 
+// ---------- feel: a trained emotion classifier ----------
+//
+// Small and quick on CPU (tens of ms per sentence). Downloaded on first use (≈67 MB), then offline.
+// The first model that loads wins; if none does, the app falls back to its word lists.
+
+const EMO_IDS = ['Cohee/distilbert-base-uncased-go-emotions-onnx', 'SamLowe/roberta-base-go_emotions-onnx']
+type Classifier = (t: string[], o: Record<string, unknown>) => Promise<{ label: string; score: number }[][] | { label: string; score: number }[]>
+let emoP: Promise<Classifier> | null = null
+let emoFailedAt = 0
+function loadEmotion() {
+  if (!emoP) {
+    emoP = (async () => {
+      const t = await transformers(true)
+      let last: unknown
+      for (const id of EMO_IDS) {
+        for (const dtype of ['q8', 'fp32'] as const) {
+          try {
+            const p = await t.pipeline('text-classification', id, { dtype, device: 'cpu' })
+            return p as unknown as Classifier
+          } catch (e) { last = e }
+        }
+      }
+      throw last instanceof Error ? last : new Error('no emotion model could be loaded')
+    })().catch((e) => { emoP = null; emoFailedAt = Date.now(); throw e })
+  }
+  return emoP
+}
+
+async function emotions(texts: string[]) {
+  // After a failed download, don't retry for 10 minutes (offline, or Hugging Face unreachable).
+  if (!emoP && Date.now() - emoFailedAt < 10 * 60000) return null
+  const clf = await loadEmotion()
+  const t0 = Date.now()
+  const raw = await clf(texts.map((x) => x.slice(0, 400)), { top_k: 28 })
+  // One text gives a flat list; several give one list each.
+  const lists = (texts.length === 1 && raw.length && !Array.isArray(raw[0]) ? [raw] : raw) as { label: string; score: number }[][]
+  return { scores: lists.map((l) => Object.fromEntries(l.map((x) => [x.label, x.score]))), ms: Date.now() - t0 }
+}
+
 // ---------- hear / speak ----------
 
 async function transcribe(audio: Float32Array) {
@@ -278,6 +319,7 @@ port.on('message', async ({ data: msg }) => {
       case 'chat': result = await chat(msg.system, msg.history, msg.text, msg.teach); break
       case 'transcribe': result = await transcribe(msg.audio); break
       case 'tts': result = await speak(msg.text, msg.voice); break
+      case 'emotion': result = await emotions(msg.texts).catch(() => null); break
     }
     send({ id: msg.id, ok: true, result })
   } catch (err) {

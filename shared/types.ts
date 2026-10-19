@@ -141,6 +141,8 @@ export interface MemoryData {
   voiceBaseline: VoiceBaseline
   /** Minutes per app per hour of the week, to learn their routines (on this PC). */
   usage: Usage
+  /** What she has learned about how to react to them (src/core/learn.ts). */
+  learn: unknown
 }
 
 export const DEFAULT_SETTINGS: Settings = {
@@ -188,7 +190,8 @@ export const EMPTY_MEMORY: MemoryData = {
   followUps: [],
   moodLog: [],
   voiceBaseline: { energy: 0, pitchHz: 0, pitchVar: 0, rate: 0, n: 0 },
-  usage: { apps: {}, days: {} }
+  usage: { apps: {}, days: {} },
+  learn: null
 }
 
 // The surface the preload script exposes on window.manyaki.
@@ -230,6 +233,8 @@ export interface Bridge {
     chat(system: string, history: { role: 'user' | 'her'; text: string }[], text: string, teach?: boolean): Promise<LocalReply>
     transcribe(audio: Float32Array): Promise<{ text: string; ms: number }>
     tts(text: string, voice: string): Promise<{ samples: Float32Array; rate: number; ms: number }>
+    /** GoEmotions scores (28 labels) per text from the on-device classifier, or null if it isn't available. */
+    emotion(texts: string[]): Promise<{ scores: Record<string, number>[]; ms: number } | null>
   }
   /** Desktop control: windows, apps' controls, keys, mouse, screen. */
   desk: DeskBridge
@@ -296,6 +301,7 @@ export interface Status {
     feeling: string            // her resting emotion
     youSeem: string            // how the user last seemed ('' when unsure)
     trend: string              // e.g. "stressed 4 of the last 7 days"
+    lessons: number            // moments she has learned from (how you responded to her reactions)
   }
   /** Browser agent (Manyaki Eyes) activity, when the extension is connected. */
   eyes: { connected: boolean; task: string; step: string; redactions: number } | null

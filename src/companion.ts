@@ -15,10 +15,12 @@ import * as mem from './core/brain/memoryLogic'
 import { decideNudge, FocusTimer, OFFLINE_LINES, pick, SULK_AFTER_MIN, type NudgeKind } from './core/motivation'
 import { letterFileName, letterPrompt, offlineLetter, type Letter } from './core/letters'
 import { appraise, bondLabel, describe, restingEmotion, sanitizeAffect, step, type AffectState, type Appraisal } from './core/affect'
-import { empathyHint, fuse, logFeeling, mirrorFor, moodTrend, readText, readVoice, updateBaseline, type Empathy, type UserFeeling, type VoiceRead } from '../shared/empathy'
+import { empathyHint, fuse, logFeeling, moodTrend, readText, readVoice, updateBaseline, type Empathy, type UserFeeling, type VoiceRead } from '../shared/empathy'
 import { analyzeUtterance } from '../shared/prosody'
 import { addFollowUp, detectFollowUp, dueFollowUps, followUpEvent, markAsked } from '../shared/followups'
 import { asBullets, isRecallQuestion, search as recallSearch, touch as touchFacts } from '../shared/recall'
+import { blend, herFace, userFeeling } from '../shared/goemotions'
+import { ANNOYED, choose, learn, newLearn, REACTION_FACE, rewardFrom, sanitizeLearn, type Context as LearnContext, type LearnState, type Reaction } from './core/learn'
 import { addMinute, routines, usualNow } from '../shared/patterns'
 import type { DeskOp } from './core/brain/tools'
 import type { Glance, WindowOp } from '../shared/types'
@@ -135,6 +137,7 @@ export class Companion implements ToolHost {
     this.memory = await this.bridge.getMemory()
     this.memory.goals = mem.rolloverGoals(this.memory.goals)
     this.affect = sanitizeAffect(this.memory.affect)
+    this.learnState = sanitizeLearn(this.memory.learn)
     if (this.memory.focus && this.memory.focus.endsAt > Date.now()) {
       this.timer.state = { ...this.memory.focus }
       this.stage.body.focus = this.memory.focus.kind === 'focus'
@@ -194,6 +197,9 @@ export class Companion implements ToolHost {
     this.text.model = s.textModel
     this.stage.setSize(s.size)
     this.stage.batterySaver = s.batterySaver
+    // Muting her or switching on Do not disturb right after a reaction says it didn't land.
+    if (prev && !prev.voiceMuted && s.voiceMuted) this.teach('muted')
+    if (prev && !prev.dnd && s.dnd) this.teach('dnd')
     this.stage.body.dnd = s.dnd
     if (!s.emotionalAttachment && this.sulk !== 'none') this.forgive()
     if (prev && prev.brainMode !== s.brainMode) {
@@ -322,7 +328,7 @@ export class Companion implements ToolHost {
         this.lastUserInputAt = Date.now()
         this.stage.bubble.show(text, { you: true, holdMs: 0 })
         this.memory.turns = mem.addTurn(this.memory.turns, { role: 'user', text, at: Date.now() - 1 })
-        if (input.audio) this.perceiveUser(text, input.audio, true) // typed text was read in sendTyped
+        if (input.audio) void this.perceiveUser(text, input.audio, true) // typed text was read in sendTyped
       }
       if (this.localStatus?.llm !== 'loaded') this.stage.chip.set('waking up my offline brain… 🧠', '', 30000)
       await this.localWarm
@@ -342,8 +348,10 @@ export class Companion implements ToolHost {
       const reply = await this.bridge.local.chat(this.localPersona(), [], prompt, teach)
       this.stage.chip.set('')
       const say = reply.say || 'Hehe~'
-      const mood = moodFromReply(say, intent)
-      this.react(mood.emotion as Emotion, mood.action as Action, mood.emote)
+      // Actions (open, timer) keep their fixed gesture; otherwise the classifier reads her own line.
+      const rule = moodFromReply(say, intent)
+      const mood = intent ? { ...rule, intensity: 0.8 } : await this.faceForLine(say, rule)
+      this.react(mood.emotion as Emotion, mood.action as Action, mood.emote, mood.intensity)
       this.memory.turns = mem.addTurn(this.memory.turns, { role: 'her', text: say, at: Date.now() })
       this.lastInteractionAt = Date.now()
       this.saveMemory()
@@ -469,7 +477,7 @@ export class Companion implements ToolHost {
       this.memory.turns = mem.addTurn(this.memory.turns, { role: 'user', text: this.userText.trim(), at: now - 1 })
       this.userTurnsSinceDistill++
       // Live hears their tone itself; here it updates her mood, the mood log and follow-ups.
-      this.perceiveUser(this.userText.trim(), this.pendingVoice ?? undefined, false)
+      void this.perceiveUser(this.userText.trim(), this.pendingVoice ?? undefined, false)
       this.pendingVoice = null
     }
     if (this.herText.trim()) this.memory.turns = mem.addTurn(this.memory.turns, { role: 'her', text: this.herText.trim(), at: now })
@@ -534,7 +542,7 @@ export class Companion implements ToolHost {
       if (heard && !input.event) {
         this.memory.turns = mem.addTurn(this.memory.turns, { role: 'user', text: heard, at: Date.now() - 1 })
         this.userTurnsSinceDistill++
-        if (!input.text) this.perceiveUser(heard, input.audio, false) // typed text was read in sendTyped
+        if (!input.text) void this.perceiveUser(heard, input.audio, false) // typed text was read in sendTyped
       }
       if (r.text) {
         this.memory.turns = mem.addTurn(this.memory.turns, { role: 'her', text: r.text, at: Date.now() })
@@ -871,14 +879,19 @@ export class Companion implements ToolHost {
    * and their voice compared with their usual voice, all on this PC; catch a little of it; note upcoming
    * events to follow up on. `mirror`: show a quick matching face now, before her reply arrives.
    */
-  private perceiveUser(text: string, audio: Float32Array | undefined, mirror: boolean) {
+  private async perceiveUser(text: string, audio: Float32Array | undefined, mirror: boolean) {
     let voice: VoiceRead | null = null
     if (audio && audio.length > 16000 * 0.6) {
       const f = analyzeUtterance(audio)
       voice = readVoice(f, this.memory.voiceBaseline)
       this.memory.voiceBaseline = updateBaseline(this.memory.voiceBaseline, f)
     }
-    const e = fuse(readText(text), voice)
+    // The trained classifier reads the words (on this PC); the word lists cover Hinglish and stand in
+    // while the model downloads. A slow model never delays her reaction by more than ~0.6 s.
+    const go = await Promise.race([this.bridge.local.emotion([text]).catch(() => null), new Promise<null>((r) => setTimeout(() => r(null), 600))])
+    const words = readText(text)
+    const e = fuse(blend(go?.scores?.[0] ? userFeeling(go.scores[0]) : null, words), voice)
+    this.rewardReaction(e, text)
     this.lastEmpathy = { e, at: Date.now() }
     this.memory.moodLog = logFeeling(this.memory.moodLog, mem.dayKey(), e)
     this.feel('talked')
@@ -893,12 +906,51 @@ export class Companion implements ToolHost {
       this.memory.followUps = addFollowUp(this.memory.followUps, { ...fu, feeling }, Math.random().toString(36).slice(2, 9))
       this.bridge.log('info', `follow-up noted for ${fu.dueDay}`)
     }
-    if (mirror && !this.audio.speaking && this.sulk === 'none') {
-      const m = mirrorFor(e)
-      if (m) this.react(m.emotion as Emotion, 'none', m.emote, 0.35 + e.confidence * 0.4)
+    // Her first reaction is chosen by what she has learned works with you (see learn.ts).
+    if (mirror && !this.audio.speaking && this.sulk === 'none' && e.confidence >= 0.45) {
+      const ctx = { feeling: e.feeling, confidence: e.confidence, lateNight: new Date().getHours() < 5, playful: this.settings.emotionalAttachment }
+      const choice = choose(this.learnState, ctx)
+      const face = REACTION_FACE[choice]
+      this.react(face.emotion as Emotion, 'none', face.emote, 0.35 + e.confidence * 0.4)
+      this.pendingReaction = { ctx, choice, at: Date.now() }
     }
     if (e.feeling !== 'neutral') this.bridge.log('info', `empathy: ${e.feeling} ${e.confidence.toFixed(2)} [${e.cues.slice(0, 4).join(', ')}]`)
     this.saveMemory()
+  }
+
+  // ---------------- learning how to react ----------------
+
+  private learnState: LearnState = newLearn()
+  private pendingReaction: { ctx: LearnContext; choice: Reaction; at: number } | null = null
+
+  /** Your response to her last reaction (within 2 minutes) teaches her. One lesson per reaction. */
+  private teach(signal: Parameters<typeof rewardFrom>[0]) {
+    const p = this.pendingReaction
+    if (!p || Date.now() - p.at > 120000) { this.pendingReaction = null; return }
+    this.pendingReaction = null
+    this.learnState = learn(this.learnState, p.ctx, p.choice, rewardFrom(signal))
+    this.memory.learn = this.learnState
+    this.bridge.log('info', `learned: ${p.choice} for ${p.ctx.feeling} -> ${signal}`)
+    this.saveMemory()
+  }
+
+  /** Reads a new message as feedback on her previous reaction. */
+  private rewardReaction(e: Empathy, text: string) {
+    if (!this.pendingReaction) return
+    if (ANNOYED.test(text)) this.teach(/\bstop|shut up|chup|bas\b/i.test(text) ? 'stop' : 'annoyed')
+    else if (PRAISE.test(text)) this.teach('praise')
+    else if (e.feeling === 'grateful') this.teach('thanks')
+    else if (['happy', 'excited', 'proud'].includes(e.feeling) && e.confidence >= 0.45) this.teach('warm-reply')
+    else if (['angry', 'frustrated'].includes(e.feeling) && e.confidence >= 0.6) this.teach('annoyed')
+    else this.teach('reply')
+  }
+
+  /** Her face for a line she says without a `react` call (offline brain): read by the classifier. */
+  private async faceForLine(say: string, fallback: { emotion: string; action: string; emote: string | null }) {
+    const go = await Promise.race([this.bridge.local.emotion([say]).catch(() => null), new Promise<null>((r) => setTimeout(() => r(null), 500))])
+    if (!go?.scores?.[0]) return { ...fallback, intensity: 0.8 }
+    const f = herFace(go.scores[0])
+    return { emotion: f.emotion, action: fallback.action, emote: fallback.emote, intensity: f.intensity }
   }
 
   /** Every few seconds: time passes for her mood, and her resting face and idle drift with it. */
@@ -1265,6 +1317,7 @@ export class Companion implements ToolHost {
     if (rapid) {
       this.stage.rapid = []
       this.feel('poked-too-much')
+      this.teach('poked-too-much')
       this.stage.squash.impulse(-0.8)
       this.react('pout', 'pout', 'anger')
       this.stage.bubble.show('Mou~ stop poking me! 😤', { holdMs: 2500 })
@@ -1275,6 +1328,7 @@ export class Companion implements ToolHost {
     if (this.audio.speaking) { this.audio.stop(); this.local.stop(); return } // tap to interrupt
     const kind = zone === 'head' ? 'headpat' : 'poke'
     this.feel(kind)
+    if (kind === 'headpat') this.teach('headpat')
     // Jelly wobble: a pat squishes her down a little, a poke makes her boing.
     this.stage.squash.impulse(zone === 'head' ? -0.45 : 0.35)
     const l = OFFLINE_LINES[kind]
@@ -1323,7 +1377,7 @@ export class Companion implements ToolHost {
     this.stage.bubble.show(text, { you: true, holdMs: 0 })
     this.speechEndAt = performance.now()
     this.firstAudioMs = 0
-    this.perceiveUser(text, undefined, true)
+    void this.perceiveUser(text, undefined, true)
     if (isScreenRequest(text)) return this.lookAndExplain(text)
     if (!this.cloudAllowed() && this.localReady) return this.localTurn({ text })
     if (this.cloudAllowed() && this.live.usable && (await this.live.sendText(redactPII(text, { homeDir: this.bridge.homeDir })))) {
@@ -1433,7 +1487,8 @@ export class Companion implements ToolHost {
       arousal: Math.round(s.a * 100) / 100,
       feeling: restingEmotion(s).emotion,
       youSeem: seem,
-      trend: t ? `${t.feeling} on ${t.days} of the last 7 days` : ''
+      trend: t ? `${t.feeling} on ${t.days} of the last 7 days` : '',
+      lessons: this.learnState.lessons
     }
   }
 

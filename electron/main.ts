@@ -434,6 +434,7 @@ function registerIpc() {
   ipcMain.handle('local:chat', (_e, system: string, history: unknown, text: string, teach?: boolean) => askBrain({ type: 'chat', system, history, text, teach }, 120000))
   ipcMain.handle('local:transcribe', (_e, audio: Float32Array) => askBrain({ type: 'transcribe', audio }, 60000))
   ipcMain.handle('local:tts', (_e, text: string, voice: string) => askBrain({ type: 'tts', text, voice }, 60000))
+  ipcMain.handle('local:emotion', (_e, texts: string[]) => askBrain({ type: 'emotion', texts: (Array.isArray(texts) ? texts : []).slice(0, 4).map(String) }, 180000).catch(() => null))
   ipcMain.handle('action:run', async (_e, kind: ActionKind, target: string) => {
     const r = await runAction(kind, target)
     log('info', `action ${kind} "${String(target).slice(0, 60)}" -> ${r.ok ? 'opened' : r.error}`)

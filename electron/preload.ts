@@ -31,7 +31,8 @@ const bridge: Bridge = {
     warm: (system) => ipcRenderer.invoke('local:warm', system),
     chat: (system, history, text, teach) => ipcRenderer.invoke('local:chat', system, history, text, teach),
     transcribe: (audio) => ipcRenderer.invoke('local:transcribe', audio),
-    tts: (text, voice) => ipcRenderer.invoke('local:tts', text, voice)
+    tts: (text, voice) => ipcRenderer.invoke('local:tts', text, voice),
+    emotion: (texts) => ipcRenderer.invoke('local:emotion', texts)
   },
   desk: {
     windows: () => ipcRenderer.invoke('desk:windows'),
