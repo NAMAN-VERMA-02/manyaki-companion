@@ -39,6 +39,8 @@ export interface Settings {
   /** Games count as work (streamers / pro players), so she doesn't nag during gaming. */
   gamingIsWork: boolean
   voiceMuted: boolean            // she replies in the bubble only, no audio
+  /** Ignored for an hour she sulks, then cries; cry too much and she gets angry and writes you letters. */
+  emotionalAttachment: boolean
   checkInMinutes: number
   focusMinutes: number
   breakMinutes: number
@@ -74,6 +76,7 @@ export const DEFAULT_SETTINGS: Settings = {
   streamSafe: false,
   gamingIsWork: false,
   voiceMuted: false,
+  emotionalAttachment: false,
   checkInMinutes: 12,
   focusMinutes: 25,
   breakMinutes: 5,
@@ -121,6 +124,8 @@ export interface Bridge {
   wipeMemory(): Promise<void>
   exportMemory(): Promise<string | null>
   notify(title: string, body: string): void
+  /** Save one of her angry letters to Desktop\Letters from Manyaki; a notification opens it. */
+  writeLetter(fileName: string, body: string): Promise<{ ok: boolean; path?: string; error?: string }>
   openSettings(): void
   /** Open the Home control window. */
   openHome(): void

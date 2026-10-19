@@ -70,6 +70,8 @@ function renderSettings() {
   $('q-stream').textContent = s.streamSafe ? '🎥 Stream-safe: on' : '🎥 Stream-safe'
   $('q-private').classList.toggle('on', s.brainMode === 'private')
   $('q-private').textContent = s.brainMode === 'private' ? '🔒 Private: on' : '🔒 Private mode'
+  $('q-attach').classList.toggle('on', s.emotionalAttachment)
+  $('q-attach').textContent = s.emotionalAttachment ? '💞 Emotional attachment: on' : '💼 Professional (attachment off)'
   if (document.activeElement !== $('focus-min')) $<HTMLInputElement>('focus-min').value = String(s.focusMinutes)
 }
 
@@ -158,6 +160,7 @@ export async function initHome() {
   $('q-reset').onclick = () => bridge.sendCommand({ type: 'reset' })
   $('q-look').onclick = () => bridge.sendCommand({ type: 'look' })
   $('q-stream').onclick = () => void save({ streamSafe: !settings?.streamSafe })
+  $('q-attach').onclick = () => void save({ emotionalAttachment: !settings?.emotionalAttachment })
   $('q-private').onclick = () => void save({ brainMode: settings?.brainMode === 'private' ? 'auto' : 'private' })
   $('focus-start').onclick = () => {
     const m = Math.max(1, Math.min(120, Math.round(Number($<HTMLInputElement>('focus-min').value) || 25)))

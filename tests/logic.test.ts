@@ -3,6 +3,8 @@ import { classify } from '../electron/classify'
 import { DEFAULT_SETTINGS, EMPTY_MEMORY } from '../shared/types'
 import * as mem from '../src/core/brain/memoryLogic'
 import { decideNudge, FocusTimer, type NudgeState } from '../src/core/motivation'
+import { letterFileName, offlineLetter, parseLetter } from '../src/core/letters'
+import { EMOTIONS, faceInfo } from '../src/core/expressions'
 import { runTool, type ToolHost } from '../src/core/brain/tools'
 import { systemInstruction } from '../src/core/brain/persona'
 import { splitSentences } from '../src/core/voice/localVoice'
@@ -65,7 +67,7 @@ describe('memory', () => {
 
 describe('motivation', () => {
   const base = (over: Partial<NudgeState> = {}): NudgeState => ({
-    now: 10_000_000, dnd: false, talking: false, lastInteractionAt: 0, lastNudgeAt: {}, lastAnyNudgeAt: 0,
+    now: 10_000_000, dnd: false, talking: false, lastInteractionAt: 0, lastUserAt: 10_000_000 - 5 * MIN, criesSinceMakeup: 0, criesToday: 0, emotionalAttachment: true, lastNudgeAt: {}, lastAnyNudgeAt: 0,
     focus: null, category: 'work', label: 'VS Code', categorySince: 10_000_000 - 5 * MIN, workStreakSince: null,
     idleSeconds: 0, checkInMinutes: 12, openGoals: 0, hour: 15, ...over
   })
@@ -88,6 +90,56 @@ describe('motivation', () => {
   })
   it('nudges to sleep late at night', () => {
     expect(decideNudge(base({ hour: 2, lastInteractionAt: 10_000_000 - 20 * MIN }))?.kind).toBe('late-night')
+  })
+  it('sulks after an hour of being ignored, then cries if you keep ignoring her', () => {
+    const now = 10_000_000
+    const ignored = { category: 'neutral' as const, label: 'Explorer', lastUserAt: now - 61 * MIN }
+    expect(decideNudge(base({ ...ignored, lastUserAt: now - 50 * MIN }))?.kind).not.toBe('ignored-sulk')
+    expect(decideNudge(base(ignored))?.kind).toBe('ignored-sulk')
+    // working, or chatting with her, is not ignoring her
+    expect(decideNudge(base({ ...ignored, category: 'work' }))?.kind).not.toBe('ignored-sulk')
+    expect(decideNudge(base({ ...ignored, category: 'self' }))?.kind).not.toBe('ignored-sulk')
+    // already sulked this time: no repeat, and no crying until 90 min and a gap after the sulk
+    const sulked = { ...ignored, lastNudgeAt: { 'ignored-sulk': now - 10 * MIN }, lastAnyNudgeAt: now - 10 * MIN }
+    expect(decideNudge(base(sulked))?.kind ?? '').not.toMatch(/ignored/)
+    const later = { ...sulked, lastUserAt: now - 95 * MIN, lastNudgeAt: { 'ignored-sulk': now - 30 * MIN } }
+    expect(decideNudge(base(later))?.kind).toBe('ignored-cry')
+    expect(decideNudge(base({ ...later, lastNudgeAt: { ...later.lastNudgeAt, 'ignored-cry': now - 10 * MIN } }))?.kind ?? '').not.toMatch(/ignored/)
+    // talking to her resets it: a fresh hour must pass before the next sulk
+    expect(decideNudge(base({ ...ignored, lastNudgeAt: { 'ignored-sulk': now - 120 * MIN } }))?.kind).toBe('ignored-sulk')
+    // never during focus, DND, or while you're away from the PC
+    expect(decideNudge(base({ ...ignored, focus: { kind: 'focus', endsAt: now + 10 * MIN } }))).toBeNull()
+    expect(decideNudge(base({ ...ignored, dnd: true }))).toBeNull()
+    expect(decideNudge(base({ ...ignored, idleSeconds: 600 }))).toBeNull()
+  })
+  it('gets angry instead of crying again once she has cried too much, and only once per stretch', () => {
+    const now = 10_000_000
+    const due = { category: 'neutral' as const, label: 'Explorer', lastUserAt: now - 150 * MIN, lastNudgeAt: { 'ignored-sulk': now - 90 * MIN, 'ignored-cry': now - 31 * MIN }, lastAnyNudgeAt: now - 31 * MIN }
+    expect(decideNudge(base({ ...due, criesSinceMakeup: 1, criesToday: 1 }))?.kind).toBe('ignored-cry')
+    expect(decideNudge(base({ ...due, criesSinceMakeup: 2, criesToday: 2 }))?.kind).toBe('ignored-angry')
+    // three cries today (even forgiven ones) and the next cry is anger too
+    expect(decideNudge(base({ ...due, criesSinceMakeup: 0, criesToday: 3 }))?.kind).toBe('ignored-angry')
+    // already angry this stretch: she just huffs, no more nudges
+    expect(decideNudge(base({ ...due, criesSinceMakeup: 2, lastNudgeAt: { ...due.lastNudgeAt, 'ignored-angry': now - 20 * MIN } }))).toBeNull()
+    // the setting turns all of it off
+    expect(decideNudge(base({ ...due, emotionalAttachment: false, criesSinceMakeup: 2 }))?.kind ?? '').not.toMatch(/ignored/)
+  })
+  it('writes letters that differ, with safe file names', () => {
+    let seed = 1
+    const rng = () => ((seed = (seed * 16807) % 2147483647) / 2147483647)
+    const ctx = { name: 'Naman', mins: 140, cries: 3, app: 'YouTube', n: 1, recentTitles: [] as string[] }
+    const a = offlineLetter(ctx, rng)
+    const b = offlineLetter({ ...ctx, recentTitles: [a.title] }, rng)
+    expect(a.body).toContain('Naman')
+    expect(a.body).toContain('Manyaki')
+    expect(a.body).not.toMatch(/\{(name|mins|cries|app|n)\}/)
+    expect(b.title).not.toBe(a.title)
+    expect(b.body).not.toBe(a.body)
+    // no path separators or reserved characters survive
+    expect(letterFileName(String.raw`Do You Even Love Me?? 😭 /..\evil:`, new Date(2026, 9, 16, 14, 5))).toBe('2026-10-16 14-05 - Do You Even Love Me ..evil.txt')
+    expect(parseLetter('{"title":"Hmph","body":"short"}')).toBeNull()
+    expect(parseLetter('not json')).toBeNull()
+    expect(parseLetter(JSON.stringify({ title: 'Hmph', body: 'x'.repeat(50) }))?.title).toBe('Hmph')
   })
   it('focus timer fires once at the end and survives clock jumps', () => {
     const t = new FocusTimer()
@@ -126,7 +178,28 @@ describe('tools', () => {
   })
 })
 
+describe('detailed emotions', () => {
+  it('every emotion has an idle loop, and the react tool passes intensity through clamped', async () => {
+    for (const e of EMOTIONS) expect(['idle', 'idleHappy', 'shy', 'pout']).toContain(faceInfo(e).idle)
+    expect(faceInfo('proud').emote).toBe('star')
+    const got: unknown[] = []
+    const host = { react: (...a: unknown[]) => got.push(a) } as unknown as ToolHost
+    await runTool(host, 'react', { emotion: 'embarrassed', action: 'shy', intensity: 3 })
+    await runTool(host, 'react', { emotion: 'lonely', action: 'none' })
+    expect(got).toEqual([['embarrassed', 'shy', null, 1], ['lonely', 'none', null, 0.8]])
+  })
+})
+
 describe('persona', () => {
+  it('is professional by default and playful only with emotional attachment on', () => {
+    const ctx = { memory: EMPTY_MEMORY, activity: null, shareTitles: false, focus: null }
+    const pro = systemInstruction(ctx)
+    const fun = systemInstruction({ ...ctx, playful: true })
+    expect(pro).toContain('professional assistant')
+    expect(pro).not.toContain('hehe", "ehh?')
+    expect(fun).toContain('teasing and playful')
+    expect(fun).not.toContain('professional assistant')
+  })
   it('includes name, goals, facts, focus and only the app label unless titles are shared', () => {
     const memory = { ...EMPTY_MEMORY, userName: 'Naman', facts: [{ text: 'DSA exam Nov 3', at: 1 }], goals: [{ id: 'a', text: 'Revise graphs', done: false, day: mem.dayKey() }] }
     const activity = { app: 'chrome', title: 'secret doc title', category: 'work' as const, label: 'the browser', bounds: null, maximized: false, fullscreen: false, idleSeconds: 0 }

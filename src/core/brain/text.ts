@@ -1,6 +1,7 @@
 import { FunctionCallingConfigMode, GoogleGenAI, type Content, type Part } from '@google/genai'
 import { runTool, toolDeclarations, type ToolHost } from './tools'
 import type { Turn } from '../../../shared/types'
+import { parseLetter, type Letter } from '../letters'
 
 /**
  * Fallback brain (and the background helper for memory): Gemini Flash over plain HTTPS.
@@ -156,6 +157,17 @@ export class TextBrain {
       this.log('distill: bad JSON')
       return { facts: [], summary: '' }
     }
+  }
+
+  /** A fresh angry letter (see letters.ts). Null if the model's answer wasn't usable. */
+  async letter(prompt: string): Promise<Letter | null> {
+    if (!this.ai) return null
+    const res = await this.generate({
+      model: this.liteModel,
+      contents: [{ role: 'user', parts: [{ text: prompt }] }],
+      config: { responseMimeType: 'application/json', maxOutputTokens: 600, temperature: 1 }
+    })
+    return parseLetter(res.text ?? '')
   }
 }
 

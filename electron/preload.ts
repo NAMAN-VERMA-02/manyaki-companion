@@ -20,6 +20,7 @@ const bridge: Bridge = {
   wipeMemory: () => ipcRenderer.invoke('memory:wipe'),
   exportMemory: () => ipcRenderer.invoke('memory:export'),
   notify: (title, body) => ipcRenderer.send('notify', title, body),
+  writeLetter: (fileName, body) => ipcRenderer.invoke('letter:write', fileName, body),
   openSettings: () => ipcRenderer.send('settings:open'),
   openHome: () => ipcRenderer.send('home:open'),
   quit: () => ipcRenderer.send('app:quit'),

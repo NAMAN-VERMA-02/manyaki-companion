@@ -1,13 +1,13 @@
 import { Behavior, Type, type FunctionDeclaration } from '@google/genai'
 import { ACTIONS, type Action } from '../behavior'
-import type { Emotion } from '../expressions'
+import { EMOTIONS, type Emotion } from '../expressions'
 import { EMOTES } from '../fx'
 
-export const EMOTIONS: Emotion[] = ['neutral', 'happy', 'excited', 'sad', 'worried', 'angry', 'pout', 'surprised', 'relaxed', 'shy', 'smug', 'sleepy']
+export { EMOTIONS }
 
 /** What the app can do when the model calls a tool. */
 export interface ToolHost {
-  react(emotion: Emotion, action: Action, emote: string | null): void
+  react(emotion: Emotion, action: Action, emote: string | null, intensity?: number): void
   startFocus(minutes: number): string
   stopFocus(): string
   addGoal(text: string): string
@@ -27,14 +27,15 @@ export function toolDeclarations(live: boolean): FunctionDeclaration[] {
   return [
     {
       name: 'react',
-      description: 'Set your facial expression, play a body gesture and optionally pop a little emote above your head. Call this at the start of most replies.',
+      description: 'Set your facial expression, play a body gesture and optionally pop a little emote above your head. Call this at the start of most replies. Pick the most specific emotion that fits (e.g. proud for their win, curious for a question, nervous before a test, embarrassed when teased, lonely when they were gone, determined when starting work) and how strongly you feel it.',
       ...nb,
       parameters: {
         type: Type.OBJECT,
         properties: {
-          emotion: { type: Type.STRING, enum: EMOTIONS },
+          emotion: { type: Type.STRING, enum: [...EMOTIONS] },
           action: { type: Type.STRING, enum: ACTIONS },
-          emote: { type: Type.STRING, enum: EMOTES, description: 'optional' }
+          emote: { type: Type.STRING, enum: EMOTES, description: 'optional' },
+          intensity: { type: Type.NUMBER, description: 'optional, 0.2 (a hint of it) to 1 (fully), default 0.8' }
         },
         required: ['emotion', 'action']
       }
@@ -93,10 +94,11 @@ export async function runTool(host: ToolHost, name: string, args: Record<string,
   try {
     switch (name) {
       case 'react': {
-        const emotion = (EMOTIONS as string[]).includes(String(args.emotion)) ? (args.emotion as Emotion) : 'happy'
+        const emotion = (EMOTIONS as readonly string[]).includes(String(args.emotion)) ? (args.emotion as Emotion) : 'happy'
         const action = (ACTIONS as string[]).includes(String(args.action)) ? (args.action as Action) : 'none'
         const emote = typeof args.emote === 'string' && EMOTES.includes(args.emote) ? args.emote : null
-        host.react(emotion, action, emote)
+        const n = Number(args.intensity)
+        host.react(emotion, action, emote, Number.isFinite(n) ? Math.max(0.2, Math.min(1, n)) : 0.8)
         return { ok: true }
       }
       case 'start_focus': {

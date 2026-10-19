@@ -79,8 +79,14 @@ export function moodFromReply(say: string, intent: Intent | null): Mood {
   if (intent?.tool === 'complete_goal') return { emotion: 'excited', action: 'clap', emote: 'party' }
   if (intent && intent.tool.startsWith('open_')) return { emotion: 'happy', action: 'none', emote: null }
   if (/\b(yay|proud|amazing|awesome|great job|well done|you did it|shabash|wah|congrat)/.test(s)) return { emotion: 'excited', action: 'cheer', emote: 'sparkle' }
+  if (/\b(proud of you|so proud|you nailed|crushed it)/.test(s)) return { emotion: 'proud', action: 'clap', emote: 'star' }
+  if (/\b(missed you|lonely|all alone|akeli)/.test(s)) return { emotion: 'lonely', action: 'none', emote: null }
+  if (/\b(nervous|scary|exam|test tomorrow|deadline|darr)/.test(s)) return { emotion: 'nervous', action: 'none', emote: 'sweat' }
+  if (/\b(wait what|confus|not sure|huh)\b/.test(s)) return { emotion: 'confused', action: 'think', emote: 'question' }
+  if (/\b(let'?s go|you got this|we can do|chalo)\b/.test(s)) return { emotion: 'determined', action: 'cheer', emote: 'fire' }
   if (/\b(sorry|sad|tired|oh no|don't worry|it's okay|koi baat nahi|hug)/.test(s)) return { emotion: 'worried', action: 'none', emote: 'heart' }
-  if (/\b(thank|best|cute|love|aww|hehe)/.test(s)) return { emotion: 'shy', action: 'shy', emote: 'heart' }
+  if (/\b(thank you|thanks|grateful|shukriya)/.test(s)) return { emotion: 'grateful', action: 'nod', emote: 'heart' }
+  if (/\b(best|cute|love|aww|hehe)/.test(s)) return { emotion: 'shy', action: 'shy', emote: 'heart' }
   if (/\b(imagine|think of|let me explain|step|first|basically|samjho|matlab)/.test(s)) return { emotion: 'happy', action: 'think', emote: 'idea' }
   if (/\?\s*$/.test(s)) return { emotion: 'happy', action: 'none', emote: 'question' }
   if (/\b(break|rest|water|stretch|sleep)/.test(s)) return { emotion: 'relaxed', action: 'stretch', emote: 'coffee' }

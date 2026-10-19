@@ -28,6 +28,7 @@ function fill(s: Settings) {
   $<HTMLInputElement>('launch').checked = s.launchAtLogin
   $<HTMLInputElement>('dnd').checked = s.dnd
   $<HTMLInputElement>('muted').checked = s.voiceMuted
+  $<HTMLInputElement>('emotionalAttachment').checked = s.emotionalAttachment
   for (const r of document.querySelectorAll<HTMLInputElement>('input[name=brain]')) r.checked = r.value === s.brainMode
   $<HTMLInputElement>('gamingwork').checked = s.gamingIsWork
   $<HTMLInputElement>('streamsafe').checked = s.streamSafe
@@ -107,6 +108,7 @@ async function init() {
   $<HTMLInputElement>('launch').onchange = (e) => save({ launchAtLogin: (e.target as HTMLInputElement).checked })
   $<HTMLInputElement>('dnd').onchange = (e) => save({ dnd: (e.target as HTMLInputElement).checked })
   $<HTMLInputElement>('muted').onchange = (e) => save({ voiceMuted: (e.target as HTMLInputElement).checked })
+  $<HTMLInputElement>('emotionalAttachment').onchange = (e) => save({ emotionalAttachment: (e.target as HTMLInputElement).checked })
   for (const r of document.querySelectorAll<HTMLInputElement>('input[name=brain]')) r.onchange = () => save({ brainMode: r.value as Settings['brainMode'] })
   $<HTMLInputElement>('gamingwork').onchange = (e) => save({ gamingIsWork: (e.target as HTMLInputElement).checked })
   $<HTMLInputElement>('streamsafe').onchange = (e) => save({ streamSafe: (e.target as HTMLInputElement).checked })

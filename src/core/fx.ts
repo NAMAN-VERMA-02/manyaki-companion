@@ -51,7 +51,7 @@ export class Blush {
 
 const EMOTE_GLYPH: Record<string, string> = {
   heart: '💗', sparkle: '✨', anger: '💢', sleep: '💤', idea: '💡', question: '❓', party: '🎉',
-  music: '🎵', sweat: '💦', star: '⭐', fire: '🔥', note: '📝', coffee: '☕', water: '💧'
+  music: '🎵', sweat: '💦', star: '⭐', fire: '🔥', note: '📝', coffee: '☕', water: '💧', tear: '😢'
 }
 export const EMOTES = Object.keys(EMOTE_GLYPH)
 

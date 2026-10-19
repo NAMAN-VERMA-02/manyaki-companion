@@ -198,6 +198,24 @@ function openHome(tab: 'home' | 'settings' = 'home', inactive = false) {
 const openSettings = () => openHome('settings')
 
 let iconCache: Electron.NativeImage | null = null
+/** Saves one of her angry letters into a folder on the Desktop and shows a notification that opens it. */
+function writeLetter(fileName: string, body: string): string {
+  const dir = join(app.getPath('desktop'), 'Letters from Manyaki')
+  mkdirSync(dir, { recursive: true })
+  // Only a plain .txt name inside that folder: no paths, no other extensions.
+  const base = fileName.replace(/[\\/:*?"<>|\x00-\x1f]/g, '').replace(/\.txt$/i, '').trim().slice(0, 90) || 'A letter'
+  let path = join(dir, `${base}.txt`)
+  for (let i = 2; existsSync(path); i++) path = join(dir, `${base} (${i}).txt`)
+  writeFileSync(path, '﻿' + body.slice(0, 6000).replace(/\r?\n/g, '\r\n'), 'utf8')
+  log('info', `letter written (${body.length} chars)`)
+  if (Notification.isSupported()) {
+    const n = new Notification({ title: 'Manyaki left you a letter 😭', body: 'Hmph. Click to read it.', icon: appIcon(128) })
+    n.on('click', () => void shell.openPath(path))
+    n.show()
+  }
+  return path
+}
+
 function appIcon(size: number) {
   if (!iconCache) iconCache = nativeImage.createFromPath(join(assetsRoot(), 'icon.png'))
   return iconCache.resize({ width: size, height: size, quality: 'best' })
@@ -229,6 +247,7 @@ function controlMenu(): Menu {
     },
     { label: 'Fix microphone (Windows privacy)…', click: () => void shell.openExternal('ms-settings:privacy-microphone') },
     { label: 'Mute her voice (text bubble only)', type: 'checkbox', checked: s.voiceMuted, click: (i) => applySettings({ voiceMuted: i.checked }) },
+    { label: '💞 Emotional attachment (sulks, cries, letters)', type: 'checkbox', checked: s.emotionalAttachment, click: (i) => applySettings({ emotionalAttachment: i.checked }) },
     { label: 'Hide her for 30 minutes', click: () => command({ type: 'hide', minutes: 30 }) },
     { type: 'separator' },
     { label: `Start focus (${s.focusMinutes} min)`, click: () => command({ type: 'focus-start' }) },
@@ -343,6 +362,13 @@ function registerIpc() {
     const r = await runAction(kind, target)
     log('info', `action ${kind} "${String(target).slice(0, 60)}" -> ${r.ok ? 'opened' : r.error}`)
     return r
+  })
+  ipcMain.handle('letter:write', (e, fileName: string, body: string) => {
+    if (!fromOurWindow(e.sender)) return { ok: false, error: 'not allowed' }
+    try { return { ok: true, path: writeLetter(String(fileName), String(body)) } } catch (err) {
+      log('warn', `letter: ${(err as Error).message}`)
+      return { ok: false, error: (err as Error).message }
+    }
   })
   ipcMain.on('notify', (_e, title: string, body: string) => {
     if (Notification.isSupported()) new Notification({ title, body, icon: appIcon(128), silent: false }).show()
