@@ -92,10 +92,17 @@ export function findText(lines: OcrLine[], target: string): { x: number; y: numb
   const want = target.toLowerCase().replace(/\s+/g, ' ').trim()
   if (!want) return null
   let best: { x: number; y: number; text: string; score: number } | null = null
+  const esc = want.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
+  const whole = new RegExp(`(^|[^\\p{L}\\p{N}])${esc}($|[^\\p{L}\\p{N}])`, 'u')
   for (const l of lines) {
     const lt = l.text.toLowerCase()
-    const i = lt.indexOf(want)
-    if (i < 0) continue
+    // Whole words only: "22" must not hit "222 226" in a diagram, "log" must not hit "catalogue".
+    const m = whole.exec(lt)
+    if (!m) continue
+    const i = m.index + m[1].length
+    // Lines that are mostly numbers or symbols are labels inside pictures, not things to click.
+    const letters = (lt.match(/\p{L}/gu) ?? []).length
+    if (letters < lt.replace(/\s/g, '').length * 0.4 && /\p{L}/u.test(want)) continue
     // Prefer short lines that are mostly the target (a button), then earlier on screen.
     const score = want.length / lt.length
     let at = 0

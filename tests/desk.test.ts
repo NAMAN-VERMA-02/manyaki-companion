@@ -59,6 +59,10 @@ describe('desktop: what she reads is redacted', () => {
     ]
     expect(findText(lines, 'submit')).toMatchObject({ x: 540, y: 315 })
     expect(findText(lines, 'cancel')).toBeNull()
+    const noisy: OcrLine[] = [{ text: "200 204 20s 212 216 no 22' ng 222 226 aaa", x: 0, y: 0, w: 400, h: 20, words: [] }]
+    expect(findText(noisy, 'next')).toBeNull()
+    expect(findText(noisy, 'no')).toBeNull()
+    expect(findText([{ text: 'Product catalogue', x: 0, y: 0, w: 200, h: 20, words: [] }], 'log')).toBeNull()
   })
 })
 
