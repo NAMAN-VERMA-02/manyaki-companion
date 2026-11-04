@@ -2,6 +2,7 @@ import { Behavior, Type, type FunctionDeclaration } from '@google/genai'
 import { ACTIONS, type Action } from '../behavior'
 import { EMOTIONS, type Emotion } from '../expressions'
 import { EMOTES } from '../fx'
+import { ICON_NAMES } from '../../../shared/board'
 
 export { EMOTIONS }
 
@@ -24,7 +25,8 @@ export interface ToolHost {
   desk(op: DeskOp, args: Record<string, unknown>): Promise<string>
   /** Teacher mode: glasses and stick, stands at the edge, keeps teaching until end_lesson. */
   startLesson(topic: string): string
-  endLesson(): string
+  /** The model asking to finish; a lesson that has barely started says carry on. */
+  finishLesson(): string
   /** Her blackboard: draws and animates what she's explaining. */
   boardDraw(args: Record<string, unknown>): Promise<string>
   boardClose(): string
@@ -171,7 +173,7 @@ export function toolDeclarations(live: boolean): FunctionDeclaration[] {
     },
     {
       name: 'board_draw',
-      description: 'Draw on your blackboard while you teach a concept. Redraw an item with the same id to animate it (change values, move highlight or pointers). Use fresh:true for a new topic.',
+      description: 'Draw on your blackboard while you teach. Every idea starts as a picture (graph, array, var or chart); words alone are refused until one is up, and never twice in a row. At most 3 items a call: draw one idea, say all of it out loud, then draw the next. Write short notes, not paragraphs. Redraw an item with the same id to animate it (change values, move highlight or pointers, add a mark). Use fresh:true for a new topic.',
       parameters: {
         type: Type.OBJECT,
         properties: {
@@ -183,15 +185,21 @@ export function toolDeclarations(live: boolean): FunctionDeclaration[] {
               type: Type.OBJECT,
               properties: {
                 id: { type: Type.STRING, description: 'give one to anything you will update, like "marks"' },
-                type: { type: Type.STRING, enum: ['text', 'list', 'code', 'array', 'var', 'graph', 'quiz'] },
-                text: { type: Type.STRING, description: 'text, code, a quiz question, or the caption of an array or graph' },
-                values: { type: Type.ARRAY, items: { type: Type.STRING }, description: 'list lines, array cells, graph node labels or quiz options' },
+                type: { type: Type.STRING, enum: ['heading', 'text', 'note', 'list', 'code', 'array', 'var', 'graph', 'chart', 'quiz'] },
+                heading: { type: Type.STRING, description: 'code: required, what this code does' },
+                text: { type: Type.STRING, description: 'text, a boxed note (the takeaway), code, a quiz question, or the caption of an array, graph or chart' },
+                values: { type: Type.ARRAY, items: { type: Type.STRING }, description: 'list lines, array cells, graph node labels, chart numbers or quiz options' },
+                labels: { type: Type.ARRAY, items: { type: Type.STRING }, description: 'chart: the name for each number' },
+                kind: { type: Type.STRING, enum: ['bar', 'line', 'pie'], description: 'chart: how to draw it' },
+                mark: { type: Type.STRING, enum: ['circle', 'underline', 'box'], description: 'scribble chalk over this item to point at it' },
                 highlight: { type: Type.ARRAY, items: { type: Type.NUMBER }, description: 'indexes of cells or nodes to light up' },
                 pointers: { type: Type.ARRAY, items: { type: Type.STRING }, description: 'array arrows as "index:label", like "0:low"' },
                 name: { type: Type.STRING, description: 'var: the variable name' },
                 value: { type: Type.STRING, description: 'var: its value' },
                 edges: { type: Type.ARRAY, items: { type: Type.STRING }, description: 'graph links as node indexes "0-1"' },
-                layout: { type: Type.STRING, enum: ['line', 'tree'], description: 'graph: line for a linked list or stack, tree for trees and graphs' },
+                layout: { type: Type.STRING, enum: ['flow', 'line', 'tree'], description: 'graph: flow for any process or how things move (numbered in order, with arrows and moving dots), line for a linked list or stack, tree for trees and networks' },
+                icons: { type: Type.ARRAY, items: { type: Type.STRING, enum: [...ICON_NAMES] }, description: 'a chalk icon per node or list line, or one for a text or note' },
+                moving: { type: Type.BOOLEAN, description: 'graph: dots travel along the links, to show data or things moving' },
                 answer: { type: Type.NUMBER, description: 'quiz: index of the right option' }
               },
               required: ['type']
@@ -253,7 +261,7 @@ export async function runTool(host: ToolHost, name: string, args: Record<string,
       case 'browser_task': return { result: await host.browserTask(String(args.task ?? '')) }
       case 'recall_memory': return { result: await host.recall(String(args.query ?? '')) }
       case 'start_lesson': return { result: host.startLesson(String(args.topic ?? '')) }
-      case 'end_lesson': return { result: host.endLesson() }
+      case 'end_lesson': return { result: host.finishLesson() }
       case 'board_draw': return { result: await host.boardDraw(args) }
       case 'board_close': return { result: host.boardClose() }
       default:

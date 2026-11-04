@@ -1,6 +1,6 @@
 import type { ActivitySnapshot, Bridge, Command, EyesEventMsg, LocalStatus, MemoryData, Settings, Status } from '../shared/types'
 import { looksLikeInstruction, redactPII, sanitizeUntrusted } from '../shared/privacy'
-import { GAME_RE, isScreenRequest, isStopRequest, isTeachRequest, isTourRequest, LESSON_NEXT, moodFromReply, parseIntent, TOUR_HINT, type Intent } from '../shared/intents'
+import { GAME_RE, isScreenRequest, isStopRequest, isTeachRequest, isTeachThis, isTourRequest, LESSON_NEXT, moodFromReply, PAGE_HINT, parseIntent, TOUR_HINT, type Intent } from '../shared/intents'
 import type { Stage, ClickZone } from './stage'
 import type { Action } from './core/behavior'
 import type { Emotion } from './core/expressions'
@@ -13,6 +13,7 @@ import type { ToolHost } from './core/brain/tools'
 import { EVENT_PREFIX, systemInstruction } from './core/brain/persona'
 import * as mem from './core/brain/memoryLogic'
 import { decideNudge, FocusTimer, OFFLINE_LINES, pick, SULK_AFTER_MIN, type NudgeKind } from './core/motivation'
+import { boardAllows, hasPicture, writtenWords } from '../shared/board'
 import { letterFileName, letterPrompt, offlineLetter, type Letter } from './core/letters'
 import { appraise, bondLabel, describe, restingEmotion, sanitizeAffect, step, type AffectState, type Appraisal } from './core/affect'
 import { empathyHint, fuse, logFeeling, moodTrend, readText, readVoice, updateBaseline, type Empathy, type UserFeeling, type VoiceRead } from '../shared/empathy'
@@ -171,6 +172,7 @@ export class Companion implements ToolHost {
     window.addEventListener('online', () => this.stage.chip.set('back online ✨', '', 2500))
 
     this.local.localTts = (t) => this.bridge.local.tts(t, 'af_heart')
+    this.local.onIdle = () => this.onAudioDrained()
     this.bridge.on('local-status', (s) => { this.localStatus = s })
     this.localStatus = await this.bridge.local.status().catch(() => null)
     window.addEventListener('offline', () => this.warmLocal())
@@ -213,6 +215,11 @@ export class Companion implements ToolHost {
     this.showMicState()
     // She must answer truthfully about what she can see: reconnect with the new shield/sense state.
     if (prev && (prev.privacyShield !== s.privacyShield || prev.screenSense !== s.screenSense)) this.live.close()
+    if (prev && prev.blackboard !== s.blackboard) {
+      if (!s.blackboard) this.boardClose()
+      this.live.close() // she reconnects knowing whether she has a board
+      this.stage.chip.set(s.blackboard ? '🧑‍🏫 blackboard on' : '🧑‍🏫 blackboard off', '', 3000)
+    }
     if (prev && prev.emotionalAttachment !== s.emotionalAttachment) {
       // New character: reconnect with the new persona and re-read it in the offline brain.
       this.live.close()
@@ -225,18 +232,21 @@ export class Companion implements ToolHost {
 
   // ---------------- lessons ----------------
 
-  private lesson: { until: number; steps: number; waitingForAnswer?: boolean } | null = null
+  private lesson: { startedAt: number; until: number; steps: number; waitingForAnswer?: boolean } | null = null
   private lessonTimer = 0
   private lessonSentAt = 0
   private textBusy = 0 // replies in flight: typing mid-reply starts a second one
   private lessonGen = 0
+  private ignoringSpeech = false
   private boardOpen = false
+  private boardClosedAt = 0
+  private lastDrawHadPicture = false
   private teachToolAt = 0
 
   startLesson(topic: string) {
     if (!this.inTask()) return 'blocked: only start a lesson when they asked you to teach something'
     if (this.lesson) return 'the lesson is already on, carry on teaching'
-    this.lesson = { until: Date.now() + 30 * 60000, steps: 0 }
+    this.lesson = { startedAt: Date.now(), until: Date.now() + 30 * 60000, steps: 0 }
     this.teachToolAt = Date.now()
     this.teacherOutfit(true)
     this.bridge.log('info', `lesson started (${sanitizeUntrusted(topic, 40).length} chars)`)
@@ -270,17 +280,33 @@ export class Companion implements ToolHost {
   /** Draws on her blackboard, after the words that lead up to it, one drawing at a time so each can be seen. */
   async boardDraw(args: Record<string, unknown>): Promise<string> {
     if (!this.inTask() && !this.lesson && !this.boardOpen) return 'blocked: only use the board when they asked you to teach something'
+    const noBoard = () => !this.settings.blackboard || this.boardClosedAt > this.lastUserInputAt
+    const off = 'They have put the blackboard away, so do not use it. Explain it in words, or on the screen if it is about something there.'
+    if (noBoard()) return off
+    if (!boardAllows(args, this.lastDrawHadPicture)) {
+      return 'Not drawn. Every idea starts with a picture: draw a graph (flow or tree, with chalk icons), an array, a var or a chart first. Then its heading, then your words.'
+    }
+    if (hasPicture(args.items)) this.lastDrawHadPicture = true
+    else if (!Array.isArray(args.items) || args.items.some((i) => (i as { type?: unknown })?.type !== 'quiz')) this.lastDrawHadPicture = false
     this.teachToolAt = Date.now()
     // The board teaches in steps too; a quiz on it holds the next step until they've answered.
     if (!this.lesson) this.startLesson('the board')
     if (this.lesson && Array.isArray(args.items) && args.items.some((i) => (i as { type?: unknown })?.type === 'quiz')) this.lesson.waitingForAnswer = true
     const job = this.teachQueue.then(async () => {
       await this.local.drained()
+      // Closed while this one was waiting its turn: it must not pop back open.
+      if (noBoard()) return off
       const owner = this.settings.streamSafe ? '' : sanitizeUntrusted(this.memory.userName, 40).split(' ')[0]
       const r = await this.bridge.boardDraw(args, owner)
       if (!r.startsWith('nothing')) this.boardOpen = true
-      await new Promise((res) => setTimeout(res, 900))
-      return r
+      await new Promise((res) => setTimeout(res, 1500))
+      if (r.startsWith('nothing') || r === 'not allowed') return r
+      const words = writtenWords(args.items)
+      const nudge = hasPicture(args.items) ? '' : ' That was only words: make your next drawing a picture (a flow with icons, a tree, an array or a chart).'
+      // The tool result is what she acts on next, so this is where she's told to read out her own writing.
+      return words
+        ? `${r}. Now, speaking slowly and clearly, say aloud, fully and in order, what you just wrote: "${words}". Then explain it properly in 3 to 5 unhurried sentences: what it means, why it matters, and a small example. Do not draw anything else until you have said all of it.${nudge}`
+        : `${r}. Now, speaking slowly and clearly, explain what you just drew, part by part, in 3 to 5 unhurried sentences, before drawing anything else.`
     })
     this.teachQueue = job.catch(() => undefined)
     return job
@@ -291,9 +317,22 @@ export class Companion implements ToolHost {
     return 'board closed'
   }
 
+  /** Closing the board stops the lesson on it, and she leaves it closed until they next ask her something. */
   private onBoardClosed() {
     this.boardOpen = false
-    if (!this.lesson) this.teacherOutfit(false)
+    this.lastDrawHadPicture = false
+    this.boardClosedAt = Date.now()
+    if (this.lesson) this.endLesson()
+    else this.teacherOutfit(false)
+  }
+
+  /** Her own end_lesson call. A lesson that has barely started is not finished, unless they've spoken since. */
+  finishLesson() {
+    const l = this.lesson
+    if (l && l.steps < 3 && this.lastUserInputAt <= l.startedAt) {
+      return 'Not finished yet: you have barely started. Carry on and cover what it is, why it matters, a worked example and a common mistake, then ask a quiz.'
+    }
+    return this.endLesson()
   }
 
   /** A lesson can't be left hanging if a connection drops before her next turn ends. */
@@ -301,7 +340,7 @@ export class Companion implements ToolHost {
     const l = this.lesson
     if (!l) return
     if (Date.now() > l.until) { this.endLesson(); return }
-    const idle = !l.waitingForAnswer && !this.lessonTimer && !this.audio.speaking && !this.live.busy && !this.textBusy
+    const idle = !l.waitingForAnswer && !this.lessonTimer && !this.audio.speaking && !this.live.busy && !this.textBusy && !this.local.busy
     if (idle && Date.now() - this.lessonSentAt > 20000) this.continueLesson()
   }
 
@@ -315,7 +354,7 @@ export class Companion implements ToolHost {
     this.lessonTimer = window.setTimeout(async () => {
       this.lessonTimer = 0
       if (this.lesson !== l) return
-      if (this.stage.body.conv === 'listening' || this.audio.speaking || this.live.busy || this.textBusy) return this.continueLesson()
+      if (this.stage.body.conv === 'listening' || this.audio.speaking || this.live.busy || this.textBusy || this.local.busy || this.local.systemSpeaking || Date.now() - this.lessonSentAt < 5000) return this.continueLesson()
       l.steps++
       this.lessonSentAt = Date.now()
       if (this.cloudAllowed() && this.live.usable && (await this.live.sendText(LESSON_NEXT))) return
@@ -338,6 +377,18 @@ export class Companion implements ToolHost {
     })
     this.teachQueue = job.catch(() => undefined)
     return job
+  }
+
+  /** "padhao": the glasses come out the moment she hears it. The model still has to act on it, so the tool isn't counted. */
+  private lessonOnWord(text: string) {
+    if (this.lesson || !isTeachThis(text)) return
+    const used = this.teachToolAt
+    this.startLesson('what they asked')
+    this.teachToolAt = used
+  }
+
+  private hintFor(text: string) {
+    return isTeachThis(text) ? PAGE_HINT : TOUR_HINT
   }
 
   private wantsTour(text?: string) {
@@ -380,6 +431,7 @@ export class Companion implements ToolHost {
       homeDir: this.bridge.homeDir,
       streamSafe: this.settings.streamSafe,
       playful: this.settings.emotionalAttachment,
+      blackboard: this.settings.blackboard,
       shield: this.settings.privacyShield,
       screenSense: this.settings.screenSense,
       ...this.heartContext()
@@ -533,6 +585,10 @@ export class Companion implements ToolHost {
   // ---------------- listening ----------------
 
   private onSpeechStart(preRoll: Float32Array[]) {
+    // The Windows voice plays outside the browser, so echo cancellation can't remove it from the mic: what
+    // the mic hears now is most likely her. Clicking her still interrupts.
+    this.ignoringSpeech = this.local.systemSpeaking
+    if (this.ignoringSpeech) return
     // Barge-in: you started talking, so she stops.
     if (this.audio.speaking || this.local.systemSpeaking) {
       this.audio.stop()
@@ -556,6 +612,7 @@ export class Companion implements ToolHost {
   }
 
   private onMicFrame(f: Float32Array) {
+    if (this.ignoringSpeech) return
     if (!this.streaming) return
     this.pendingFrames.push(f)
     if (this.live.isOpen) this.flushFrames()
@@ -568,6 +625,7 @@ export class Companion implements ToolHost {
   }
 
   private onSpeechEnd(audio?: Float32Array) {
+    if (this.ignoringSpeech) { this.ignoringSpeech = false; return }
     this.stage.chip.set('')
     // Kept until the words arrive (Live transcription), then read together for how they feel.
     this.pendingVoice = audio ?? null
@@ -612,12 +670,13 @@ export class Companion implements ToolHost {
 
   private onHerText(delta: string) {
     this.herText += delta
-    this.stage.bubble.show(this.herText, { holdMs: 0 })
+    if (this.herText.trim().length > 2) this.stage.bubble.show(this.herText, { holdMs: 0 })
   }
 
   private onUserText(delta: string) {
     this.userText += delta
     if (this.lesson && isStopRequest(this.userText)) this.endLesson()
+    this.lessonOnWord(this.userText)
     if (!this.audio.speaking) this.stage.bubble.show(this.userText, { you: true, holdMs: 0 })
   }
 
@@ -625,8 +684,9 @@ export class Companion implements ToolHost {
     const now = Date.now()
     // Voice has no way to force a tool, so if a real question got only words, ask her to go and show it.
     const asked = this.userText.trim()
-    if (asked && !this.lesson && this.teachToolAt < this.lastUserInputAt && this.wantsTour(asked)) {
-      void this.live.sendText(`They asked: "${redactPII(asked, { homeDir: this.bridge.homeDir })}".${TOUR_HINT}`)
+    if (asked && (!this.lesson || isTeachThis(asked)) && this.teachToolAt < this.lastUserInputAt && this.wantsTour(asked)) {
+      this.lessonSentAt = now
+      void this.live.sendText(`They asked: "${redactPII(asked, { homeDir: this.bridge.homeDir })}".${this.hintFor(asked)}`)
     }
     if (this.userText.trim()) {
       this.memory.turns = mem.addTurn(this.memory.turns, { role: 'user', text: this.userText.trim(), at: now - 1 })
@@ -645,7 +705,8 @@ export class Companion implements ToolHost {
 
   private onAudioDrained() {
     this.mic.setHerSpeaking(false)
-    if (this.live.busy || this.textBusy) return
+    // A gap between two sentences still being made isn't the end of what she's saying.
+    if (this.live.busy || this.textBusy || this.local.busy) return
     this.stage.body.setConv('none')
     if (this.herText) this.stage.bubble.show(this.herText, { holdMs: 4000 })
     this.herText = ''
@@ -693,7 +754,7 @@ export class Companion implements ToolHost {
     try {
       // Personal details are masked before anything leaves the PC.
       const tour = !input.event && this.wantsTour(input.text)
-      const msg = redactPII(input.event ? EVENT_PREFIX + input.event : input.text ?? '', { homeDir: this.bridge.homeDir }) + (tour ? TOUR_HINT : '')
+      const msg = redactPII(input.event ? EVENT_PREFIX + input.event : input.text ?? '', { homeDir: this.bridge.homeDir }) + (tour ? this.hintFor(input.text!) : '')
       this.textBusy++
       const asked = this.lastUserInputAt
       const say = (line: string) => {
@@ -729,7 +790,7 @@ export class Companion implements ToolHost {
     this.mic.setHerSpeaking(true)
     if (!this.settings.voiceMuted) this.local.speak(text)
     // When the system voice or Kokoro finishes, the drain handler resets conv; guard for silent failure.
-    window.setTimeout(() => { if (!this.audio.speaking && !this.local.systemSpeaking) { this.stage.body.setConv('none'); this.mic.setHerSpeaking(false) } }, Math.max(6000, text.length * 120))
+    window.setTimeout(() => { if (!this.audio.speaking && !this.local.systemSpeaking && !this.local.busy) { this.stage.body.setConv('none'); this.mic.setHerSpeaking(false) } }, Math.max(6000, text.length * 120))
   }
 
   private sayOffline(kind: keyof typeof OFFLINE_LINES, speak = true) {
@@ -1551,15 +1612,16 @@ export class Companion implements ToolHost {
     this.lastUserInputAt = Date.now()
     this.noticeUser()
     if (this.lesson && isStopRequest(text)) this.endLesson()
+    this.lessonOnWord(text)
     this.audio.stop()
     this.local.stop()
     this.stage.bubble.show(text, { you: true, holdMs: 0 })
     this.speechEndAt = performance.now()
     this.firstAudioMs = 0
     void this.perceiveUser(text, undefined, true)
-    if (isScreenRequest(text)) return this.lookAndExplain(text)
+    if (isScreenRequest(text) && !isTeachThis(text)) return this.lookAndExplain(text)
     if (!this.cloudAllowed() && this.localReady) return this.localTurn({ text })
-    if (this.cloudAllowed() && this.live.usable && (await this.live.sendText(redactPII(text, { homeDir: this.bridge.homeDir }) + (this.wantsTour(text) ? TOUR_HINT : '')))) {
+    if (this.cloudAllowed() && this.live.usable && (await this.live.sendText(redactPII(text, { homeDir: this.bridge.homeDir }) + (this.wantsTour(text) ? this.hintFor(text) : '')))) {
       this.userText = text
       this.showThinking()
       return
@@ -1685,7 +1747,13 @@ export class Companion implements ToolHost {
       { label: 'nudge now', run: () => { this.lastAnyNudgeAt = 0; this.lastInteractionAt = 0; this.considerNudge() } },
       { label: 'lesson on', run: () => { this.lastUserInputAt = Date.now(); this.startLesson('test') } },
       { label: 'lesson off', run: () => this.endLesson() },
-      { label: 'board demo', run: () => { this.lastUserInputAt = Date.now(); void this.boardDraw({ fresh: true, title: 'Arrays', items: [{ id: 'a', type: 'array', text: 'marks', values: [40, 75, 90], highlight: [1], pointers: ['1:i'] }, { type: 'var', name: 'i', value: 1 }, { type: 'code', text: 'marks[1] = 75' }, { id: 'tree', type: 'graph', values: ['8', '3', '10'], edges: ['0-1', '0-2'], layout: 'tree' }, { id: 'q', type: 'quiz', text: 'marks[0] is?', values: ['40', '75'], answer: 0 }] }) } },
+      { label: 'board demo', run: () => {
+        this.lastUserInputAt = Date.now()
+        void this.boardDraw({ fresh: true, title: 'Arrays', items: [{ type: 'text', text: 'Array ek hi jagah bahut saari values rakhta hai' }, { id: 'a', type: 'array', text: 'marks', values: [40, 75, 90], highlight: [1], pointers: ['1:i'] }] })
+        void this.boardDraw({ items: [{ id: 'a', type: 'array', text: 'marks', values: [40, 80, 90], highlight: [1], pointers: ['1:i'] }, { type: 'var', name: 'i', value: 1 }, { type: 'code', heading: 'Value badalna', text: 'marks[1] = 80\nprint(marks[1])' }] })
+        void this.boardDraw({ items: [{ id: 'c', type: 'chart', kind: 'bar', text: 'Lookup vs insert', values: [1, 6, 3], labels: ['read', 'insert', 'search'] }, { id: 'n', type: 'note', text: 'Index se seedha pahunch jaate hain', mark: 'underline' }, { id: 'l', type: 'graph', values: ['8', '3', '10'], edges: ['0-1', '1-2'], layout: 'line' }] })
+        void this.boardDraw({ items: [{ id: 'p', type: 'chart', kind: 'pie', values: [50, 30, 20], labels: ['DSA', 'Web', 'AI'] }, { id: 'q', type: 'quiz', text: 'marks[0] kya hai?', values: ['40', '80'], answer: 0 }] })
+      } },
       { label: 'sulk', run: () => { this.setSulk('pout'); this.sayOffline('ignored-sulk') } },
       { label: 'cry', run: () => { this.setSulk('cry'); this.sayOffline('ignored-cry') } },
       { label: 'angry', run: () => { this.setSulk('angry'); this.sayOffline('ignored-angry') } },

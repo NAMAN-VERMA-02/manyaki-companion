@@ -176,6 +176,8 @@ export class Stage {
     const m = this.body.mode
     if (m === 'walk' || m === 'fall' || m === 'jump' || m === 'drag' || m === 'land') return 60
     if (this.squash.active) return 60
+    // Standing at the edge teaching is mostly lips and a slow sway, with a board window also on screen.
+    if (this.body.conv === 'talking' && this.body.isTeaching) return 30
     if (this.body.conv === 'talking' || m === 'act' || this.laptop.busy) return saver ? 30 : 60
     if (this.body.conv !== 'none' || this.hover || this.emotes.active || this.face.animating || this.teacher.animating) return saver ? 24 : 30
     if (m === 'sleep') return saver ? 6 : 15
@@ -241,13 +243,18 @@ export class Stage {
     const v = this.avatar.view
     const box = this.avatar.screenBox()
     const cx = box.left + (box.right - box.left) / 2 - v.x
-    this.bubble.place(cx, box.top - v.y)
+    const screenEnd = this.display.workArea.x - this.display.bounds.x + this.display.workArea.width - v.x
+    this.bubble.place(cx, box.top - v.y, screenEnd)
     this.chip.place(cx, box.bottom - 26 - v.y)
-    // Beside her chest. Inside followWindow's width (her box + half her height), so it never gets cut off.
+    // Beside her chest, inside followWindow's width (her box + half her height). At the right edge of the
+    // screen that side is off-screen, so it moves to her other side, below the arm holding her stick.
     const mic = document.getElementById('mic-btn')!
+    const reach = this.avatar.heightPx * 0.34
+    const screenRight = this.display.workArea.x - this.display.bounds.x + this.display.workArea.width
+    const flip = (box.left + box.right) / 2 + reach + 24 > screenRight
     mic.style.display = this.hiddenAlpha ? 'none' : ''
-    mic.style.left = `${cx + this.avatar.heightPx * 0.34}px`
-    mic.style.top = `${box.top + this.avatar.heightPx * 0.32 - v.y}px`
+    mic.style.left = `${cx + (flip ? -reach : reach)}px`
+    mic.style.top = `${box.top + this.avatar.heightPx * (flip ? 0.62 : 0.32) - v.y}px`
     const chat = document.getElementById('chat')!
     if (!chat.classList.contains('hidden')) {
       chat.style.left = `${Math.max(170, Math.min(window.innerWidth - 170, cx))}px`

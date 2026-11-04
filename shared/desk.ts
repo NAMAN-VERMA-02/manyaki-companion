@@ -137,6 +137,27 @@ box-shadow:0 0 0 3px rgba(255,255,255,.75),0 0 18px 6px rgba(255,79,143,.55);ani
 </style></head><body><div id="r"></div></body></html>`
 }
 
+/** The word a site's tabs have in their title: "github" for github.com, "gmail" for mail.google.com. */
+export function tabKey(url: string): string | null {
+  let host: string
+  try { host = new URL(url).hostname.toLowerCase().replace(/^www\./, '') } catch { return null }
+  const parts = host.split('.')
+  if (parts.length > 2 && parts.slice(-2).join('.') === 'google.com') return parts[0] === 'mail' ? 'gmail' : parts[0]
+  const name = parts.length > 1 ? parts[parts.length - 2] : parts[0]
+  // Too short to tell apart in a title ("x" is in everything).
+  return name.length >= 3 ? name : null
+}
+
+/** The open tab for this site, or null. Tabs are matched on whole words in their title. */
+export function pickTab(ctls: Ctl[], url: string): Ctl | null {
+  const key = tabKey(url)
+  if (!key) return null
+  return ctls.find((c) => c.type === 'tabitem' && new RegExp(`(^|[^a-z0-9])${key}($|[^a-z0-9])`, 'i').test(c.name)) ?? null
+}
+
+/** Only the home page was asked for, so switching to an open tab is enough; anything else needs navigating. */
+export const isSiteHome = (url: string) => { try { const u = new URL(url); return u.pathname === '/' && !u.search } catch { return false } }
+
 const TERMINAL = /\b(powershell|pwsh|cmd|command prompt|windows terminal|terminal|bash|wsl|ubuntu|git bash|conhost|run)\b/i
 
 /**

@@ -42,6 +42,8 @@ export interface Settings {
   voiceMuted: boolean            // she replies in the bubble only, no audio
   /** Ignored for an hour she sulks, then cries; cry too much and she gets angry and writes you letters. */
   emotionalAttachment: boolean
+  /** She may teach on her blackboard window. Off: she explains in words and on the screen only. */
+  blackboard: boolean
   checkInMinutes: number
   focusMinutes: number
   breakMinutes: number
@@ -163,6 +165,7 @@ export const DEFAULT_SETTINGS: Settings = {
   gamingIsWork: false,
   voiceMuted: false,
   emotionalAttachment: false,
+  blackboard: true,
   checkInMinutes: 12,
   focusMinutes: 25,
   breakMinutes: 5,

@@ -216,6 +216,8 @@ export class Behavior {
     this.motion.play(run ? 'run' : 'walk', { fade: 0.25 })
   }
 
+  get isTeaching() { return this.teaching }
+
   /** Lesson on: she stands with her stick instead of wandering off or dozing. */
   setTeaching(on: boolean) {
     this.teaching = on
@@ -226,7 +228,7 @@ export class Behavior {
   goCorner() {
     const f = this.floor()
     if (this.onPerch()) this.startFall(0, 0)
-    else this.walkTo(f.right - 20)
+    else this.walkTo(f.right - this.avatar.heightPx * 0.2)
   }
 
   sleep() {

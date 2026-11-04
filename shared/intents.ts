@@ -104,7 +104,7 @@ export function moodFromReply(say: string, intent: Intent | null): Mood {
 
 /** "explain/teach me/samjhao/how does…": she switches to step-by-step teaching. */
 export function isTeachRequest(t: string): boolean {
-  return /\b(explain|teach|tutor|walk me through|how (does|do|to)|what (is|are|does)|why (is|does|do)|help me understand|i don'?t (get|understand)|quiz me|samjha|samjhao|samjha do|samajh nahi|samjh nahi|sikha|sikhao|kya hota|kaise (karte|hota|kaam)|matlab kya)\b/i.test(t)
+  return /\b(padhao|padha do|padhaiye|padhana|explain|teach|tutor|walk me through|how (does|do|to)|what (is|are|does)|why (is|does|do)|help me understand|i don'?t (get|understand)|quiz me|samjha|samjhao|samjha do|samajh nahi|samjh nahi|sikha|sikhao|kya hota|kaise (karte|hota|kaam)|matlab kya)\b/i.test(t)
 }
 
 /** A question that could mean "show me": she looks at the screen first, then tours it if it's about the computer. */
@@ -116,8 +116,14 @@ export function isTourRequest(t: string): boolean {
 /** Added to such a question on its way to the model (never shown or stored): models skip the persona rule otherwise. */
 export const TOUR_HINT = "\n\n(Note from the app, not from them: do not explain this from memory with only words and do not use an analogy. If it is a concept, call board_draw now and teach it on your blackboard step by step. If it is about a website or app on the computer, call start_lesson and teach it live on the screen. Do not ask if it makes sense.)"
 
+/** "padhao", "ise padha do", "teach me this": start teaching right away, with no question about what. */
+export const isTeachThis = (t: string) => /\b(padhao|padha do|padhaiye|padhana|teach (me )?(this|it)|read (this|it)( to me)?)\b/i.test(t)
+
+/** Added to such a request. They mean whatever is on their screen, and they've already said all they will. */
+export const PAGE_HINT = "\n\n(Note from the app, not from them: they want you to teach them what is on their screen right now. Do not ask what, and do not ask which part. Call see_screen now, scroll to the top, and teach the page section by section from there: for each section first draw its idea on your blackboard as a picture, then its heading, then explain it in your own words with a tiny example, then scroll amount 3 and carry on to the end of the page.)"
+
 /** Sent after each of her turns while a lesson is on, so she carries on instead of waiting to be asked. */
-export const LESSON_NEXT = "The lesson you are teaching continues; they are still following along. Carry on from exactly where you stopped with the next step: on the blackboard, draw or update the next thing; on the screen, look, circle what you talk about, and scroll a little if you finished what is visible. Don't greet, recap or ask if it makes sense. Only when the whole topic or page is covered, recap in a sentence and call end_lesson."
+export const LESSON_NEXT = "The lesson you are teaching continues; they are still following along. Carry on from exactly where you stopped with the next step: on the blackboard, draw or update the next picture first, then its words; on the screen, look, circle what you talk about, and scroll a little if you finished what is visible. Don't greet, recap or ask if it makes sense. Only when the whole topic or page is covered, recap in a sentence and call end_lesson."
 
 /** "stop / ruk jao / bas karo": a lesson ends right away, whatever the model would have done. */
 export const isStopRequest = (t: string) => /\b(stop|ruk|ruko|ruk jao|bas karo|bas kar|band karo|enough|that'?s enough|shut up|chup)\b/i.test(t)

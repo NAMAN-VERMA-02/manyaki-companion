@@ -29,11 +29,11 @@ export class Bubble {
   }
 
   /** Keep the bubble over her head and inside the screen. */
-  place(x: number, headTopY: number) {
+  place(x: number, headTopY: number, right = window.innerWidth) {
     if (!this.visible) return
     const w = this.el.offsetWidth
     const h = this.el.offsetHeight
-    const cx = Math.max(w / 2 + 8, Math.min(window.innerWidth - w / 2 - 8, x))
+    const cx = Math.max(w / 2 + 8, Math.min(Math.min(window.innerWidth, right) - w / 2 - 8, x))
     const cy = Math.max(h + 8, headTopY - 10)
     this.el.style.left = `${cx}px`
     this.el.style.top = `${cy}px`

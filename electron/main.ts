@@ -6,6 +6,7 @@ import { pathToFileURL } from 'node:url'
 import type { Command, DisplayInfo, Settings } from '../shared/types'
 import { startActivityWatcher } from './activity'
 import { hideRing } from './ring'
+import { resolveWebsite } from './resolve'
 import { applyDraw, type BoardState } from '../shared/board'
 import * as store from './store'
 import { runAction, type ActionKind } from './actions'
@@ -305,6 +306,7 @@ function controlMenu(): Menu {
         { label: 'Fix microphone (Windows privacy)…', click: () => void shell.openExternal('ms-settings:privacy-microphone') },
         { label: 'Mute her voice (text bubble only)', type: 'checkbox', checked: s.voiceMuted, click: (i) => applySettings({ voiceMuted: i.checked }) },
         { label: '👀 She can see my screen', type: 'checkbox', checked: s.screenSense, click: (i) => applySettings({ screenSense: i.checked }) },
+        { label: '🧑‍🏫 Blackboard', type: 'checkbox', checked: s.blackboard, click: (i) => applySettings({ blackboard: i.checked }) },
         { label: '💞 Emotional attachment (sulks, cries, letters)', type: 'checkbox', checked: s.emotionalAttachment, click: (i) => applySettings({ emotionalAttachment: i.checked }) },
         { type: 'separator' },
         { label: `Start focus (${s.focusMinutes} min)`, click: () => command({ type: 'focus-start' }) },
@@ -494,6 +496,14 @@ function registerIpc() {
   ipcMain.handle('local:tts', (_e, text: string, voice: string) => askBrain({ type: 'tts', text, voice }, 60000))
   ipcMain.handle('local:emotion', (_e, texts: string[]) => askBrain({ type: 'emotion', texts: (Array.isArray(texts) ? texts : []).slice(0, 4).map(String) }, 180000).catch(() => null))
   ipcMain.handle('action:run', async (_e, kind: ActionKind, target: string) => {
+    // A broken or slow tab check must never stop the site opening.
+    const reused = kind === 'website' && String(target ?? '').trim()
+      ? await desk.reuseTab(resolveWebsite(String(target).trim().slice(0, 200))).catch(() => null)
+      : null
+    if (reused) {
+      log('info', `action ${kind}: reused an open tab`)
+      return { ok: true, opened: reused }
+    }
     const r = await runAction(kind, target)
     log('info', `action ${kind} "${String(target).slice(0, 60)}" -> ${r.ok ? 'opened' : r.error}`)
     return r
@@ -514,7 +524,7 @@ function registerIpc() {
   ipcMain.handle('board:draw', (e, args: Record<string, unknown>, owner: string) => {
     if (!fromOurWindow(e.sender)) return 'not allowed'
     const { state, drawn } = applyDraw({ ...boardState, owner: String(owner ?? '').slice(0, 40) }, args ?? {})
-    if (!drawn) return 'nothing valid to draw: check each item has the fields its type needs'
+    if (!drawn) return 'nothing valid to draw: check each item has the fields its type needs (code needs a heading)'
     boardState = state
     showBoard()
     return `on the board now: ${state.items.map((i) => `${i.id} (${i.type})`).join(', ')}`
@@ -563,7 +573,7 @@ app.whenReady().then(() => {
   session.defaultSession.setPermissionRequestHandler((_wc, permission, cb) => cb(permission === 'media' || permission === 'notifications'))
   session.defaultSession.setPermissionCheckHandler((_wc, permission) => permission === 'media' || permission === 'notifications')
 
-  desk.initDesk({ script: join(assetsRoot(), 'desk', 'host.ps1'), log })
+  desk.initDesk({ script: join(assetsRoot(), 'desk', 'host.ps1'), log, board: () => boardWin })
   desk.setShield(store.getSettings().privacyShield)
   registerIpc()
   createOverlay()

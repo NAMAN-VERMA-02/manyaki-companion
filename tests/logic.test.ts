@@ -1,4 +1,4 @@
-import { describe, expect, it, vi } from 'vitest'
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { classify } from '../electron/classify'
 import { DEFAULT_SETTINGS, EMPTY_MEMORY } from '../shared/types'
 import * as mem from '../src/core/brain/memoryLogic'
@@ -9,6 +9,8 @@ import { runTool, type ToolHost } from '../src/core/brain/tools'
 import { systemInstruction } from '../src/core/brain/persona'
 import { TextBrain } from '../src/core/brain/text'
 import { LiveBrain } from '../src/core/brain/live'
+import { LocalVoice } from '../src/core/voice/localVoice'
+import type { AudioOut } from '../src/core/voice/audioOut'
 import { splitSentences } from '../src/core/voice/localVoice'
 import { slotForFile } from '../src/core/anim/clips'
 
@@ -168,7 +170,7 @@ describe('tools', () => {
     setUserName: (n) => `name ${n}`,
     openThing: async (k, t) => `${k} ${t}`,
     startLesson: (t) => `lesson ${t}`,
-    endLesson: () => 'ended',
+    finishLesson: () => 'ended',
     boardDraw: async () => 'drawn',
     boardClose: () => 'closed',
     lookAtScreen: async (q) => `looked: ${q}`,
@@ -214,7 +216,7 @@ describe('live turns', () => {
       const done: string[] = []
       let finishTool: (v: string) => void = () => undefined
       const host = { desk: () => new Promise((r) => { finishTool = r }) } as unknown as ToolHost
-      const events = { onTurnComplete: () => done.push('turn') } as unknown as ConstructorParameters<typeof LiveBrain>[0]
+      const events = { onTurnComplete: () => done.push('turn'), onStateChange: () => undefined } as unknown as ConstructorParameters<typeof LiveBrain>[0]
       const live = new LiveBrain(events, host, () => '', () => undefined)
       const msg = (live as unknown as { onMessage(m: unknown): void })
       msg.onMessage({ toolCall: { functionCalls: [{ id: '1', name: 'see_screen', args: {} }] } })
@@ -227,10 +229,57 @@ describe('live turns', () => {
       expect(done).toEqual(['turn'])
       expect(live.busy).toBe(false)
       live.close()
+      // A quiet session timing out is not a failure that should push her onto a different voice.
+      const open = live as unknown as { ai: unknown; session: unknown; onClose(code: number, reason: string): void }
+      open.ai = {}
+      open.session = {}
+      open.onClose(1008, 'Session closed due to client inactivity.')
+      expect(live.usable).toBe(true)
+      open.session = {}
+      open.onClose(1011, 'Internal error')
+      expect(live.usable).toBe(false)
     } finally {
       vi.useRealTimers()
       vi.unstubAllGlobals()
     }
+  })
+})
+
+describe('voice', () => {
+  const pcm = { samples: new Float32Array(10), rate: 24000 }
+  const voice = () => {
+    const played: string[] = []
+    const v = new LocalVoice({ speaking: false, enqueueFloat: () => played.push('audio'), stop() {} } as unknown as AudioOut, () => undefined)
+    return { v, played }
+  }
+  beforeEach(() => {
+    vi.stubGlobal('navigator', { onLine: true })
+    vi.stubGlobal('speechSynthesis', { getVoices: () => [], cancel() {}, speak: (u: { onend: () => void }) => u.onend() })
+    vi.stubGlobal('SpeechSynthesisUtterance', class { onend = () => undefined })
+  })
+  afterEach(() => { vi.unstubAllGlobals() })
+  it('keeps one engine for a whole utterance, and stays busy until it has all been said', async () => {
+    const { v, played } = voice()
+    const cloud: string[] = []
+    let idle = 0
+    v.onIdle = () => { idle++ }
+    v.cloud = async (t) => { cloud.push(t); return null } // out of quota
+    v.localTts = async () => pcm
+    v.speak('This is the first sentence. This is the second sentence. And here is the third one.')
+    expect(v.busy).toBe(true)
+    await v.drained()
+    expect(cloud).toHaveLength(1) // not tried again halfway through
+    expect(played).toHaveLength(3)
+    expect(v.busy).toBe(false)
+    expect(idle).toBe(1)
+  })
+  it('stops being busy as soon as it is told to stop', () => {
+    const { v } = voice()
+    v.cloud = () => new Promise(() => undefined)
+    v.speak('A sentence that never finishes being made.')
+    expect(v.busy).toBe(true)
+    v.stop()
+    expect(v.busy).toBe(false)
   })
 })
 
@@ -295,6 +344,9 @@ describe('persona', () => {
     expect(systemInstruction(ctx)).toContain('Never create, submit, save, send, buy, delete')
     expect(systemInstruction(ctx)).toContain('start_lesson')
     expect(systemInstruction({ ...ctx, screenSense: false })).not.toContain("SHOW, DON'T TELL")
+    expect(systemInstruction(ctx)).toContain('TEACHING ON YOUR BLACKBOARD')
+    expect(systemInstruction({ ...ctx, blackboard: false })).toContain('never use board_draw')
+    expect(systemInstruction({ ...ctx, blackboard: false })).not.toContain('TEACHING ON YOUR BLACKBOARD')
   })
   it('is professional by default and playful only with emotional attachment on', () => {
     const ctx = { memory: EMPTY_MEMORY, activity: null, shareTitles: false, focus: null }

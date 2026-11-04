@@ -1,5 +1,11 @@
 import type { AudioOut } from './audioOut'
 
+type Engine = 'cloud' | 'kokoro' | 'system'
+const SLOW_KEY = 'manyaki.kokoroSlow'
+function remembered() {
+  try { return localStorage.getItem(SLOW_KEY) === '1' } catch { return false }
+}
+
 export type Synth = (text: string) => Promise<{ samples: Float32Array; rate: number; ms?: number } | null>
 
 /**
@@ -16,9 +22,16 @@ export class LocalVoice {
   cloud: Synth | null = null
   /** Local Kokoro via the offline brain process. */
   localTts: Synth | null = null
-  /** Kokoro too slow on this machine (synthesis slower than playback): skip it. */
-  kokoroSlow = false
+  /** Kokoro too slow on this machine (synthesis slower than playback): skip it, and remember that across runs. */
+  kokoroSlow = remembered()
   private kokoroCalls = 0
+  private pending = 0
+  private pendingGen = 0
+  /** Called when everything queued has been said and nothing is still playing. */
+  onIdle: (() => void) | null = null
+
+  /** Something queued hasn't been said yet, even if no audio happens to be playing between two sentences. */
+  get busy() { return this.pending > 0 && this.pendingGen === this.generation }
 
   constructor(private readonly out: AudioOut, private readonly log: (m: string) => void) {}
 
@@ -26,7 +39,17 @@ export class LocalVoice {
   speak(text: string) {
     const gen = this.generation
     const sentences = splitSentences(text)
-    const jobs = sentences.map((s) => this.synth(s))
+    // Each sentence is made after the one before, so whichever engine answers first keeps the whole
+    // utterance: her voice doesn't change halfway through a thought.
+    const lock: { engine: Engine | null } = { engine: null }
+    let prev: Promise<unknown> = Promise.resolve()
+    const jobs = sentences.map((s) => {
+      const job = prev.then(() => (gen === this.generation ? this.synth(s, lock) : null))
+      prev = job
+      return job
+    })
+    this.pendingGen = gen
+    this.pending++
     this.queue = this.queue.then(async () => {
       for (let i = 0; i < jobs.length; i++) {
         const r = await jobs[i]
@@ -38,6 +61,9 @@ export class LocalVoice {
           if (gen === this.generation) await this.systemSpeak(sentences[i])
         }
       }
+    }).finally(() => {
+      this.pending--
+      if (!this.pending && gen === this.generation && !this.out.speaking) this.onIdle?.()
     })
   }
 
@@ -54,12 +80,13 @@ export class LocalVoice {
     this.out.stop()
   }
 
-  private async synth(text: string): Promise<{ samples: Float32Array; rate: number } | null> {
-    if (this.cloud && navigator.onLine) {
+  private async synth(text: string, lock: { engine: Engine | null }): Promise<{ samples: Float32Array; rate: number } | null> {
+    if (lock.engine === 'system') return null
+    if (this.cloud && navigator.onLine && lock.engine !== 'kokoro') {
       const r = await this.cloud(text).catch((err: Error) => { this.log(`cloud tts: ${err.message}`); return null })
-      if (r) return r
+      if (r) { lock.engine = 'cloud'; return r }
     }
-    if (!this.localTts || this.kokoroSlow || /[ऀ-ॿ]/.test(text)) return null
+    if (!this.localTts || this.kokoroSlow || /[ऀ-ॿ]/.test(text)) { lock.engine = 'system'; return null }
     const r = await this.localTts(text).catch((err: Error) => { this.log(`local tts: ${err.message}`); return null })
     if (r?.ms != null) {
       this.lastMs = r.ms
@@ -67,9 +94,11 @@ export class LocalVoice {
       // The first call includes loading the model; judge speed from the second call on.
       if (++this.kokoroCalls >= 2 && r.ms > audioMs * 0.9) {
         this.kokoroSlow = true
+        try { localStorage.setItem(SLOW_KEY, '1') } catch { /* only a convenience */ }
         this.log(`kokoro too slow here (${Math.round(r.ms)} ms for ${Math.round(audioMs)} ms of speech); using the Windows voice offline`)
       }
     }
+    if (r) lock.engine = 'kokoro'
     return r
   }
 

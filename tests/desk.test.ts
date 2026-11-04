@@ -1,10 +1,36 @@
 import { describe, expect, it } from 'vitest'
-import { describeControls, describeWindows, errorOnScreen, findText, hide, isPrivateWindow, pickWindow, redactOcr, ringBox, ringHtml, riskOf, type Ctl, type OcrLine, type Win } from '../shared/desk'
+import { describeControls, describeWindows, errorOnScreen, findText, hide, isPrivateWindow, pickWindow, isSiteHome, pickTab, redactOcr, ringBox, ringHtml, riskOf, tabKey, type Ctl, type OcrLine, type Win } from '../shared/desk'
 import { Vault } from '../eyes/shared/vault'
 import { asBullets, isRecallQuestion, search, touch, tokens } from '../shared/recall'
 import { addMinute, EMPTY_USAGE, routines, usualNow } from '../shared/patterns'
 
 const win = (app: string, title: string, extra: Partial<Win> = {}): Win => ({ hwnd: Math.floor(Math.random() * 1e6), title, pid: 1, app, x: 0, y: 0, w: 800, h: 600, min: false, max: false, active: false, ...extra })
+
+describe('desktop: reusing open tabs', () => {
+  const tab = (name: string, type = 'tabitem') => ({ id: name, type, name } as Ctl)
+  it('knows which word to look for in a tab title', () => {
+    expect(tabKey('https://github.com/new')).toBe('github')
+    expect(tabKey('https://www.geeksforgeeks.org/dsa/x')).toBe('geeksforgeeks')
+    expect(tabKey('https://mail.google.com')).toBe('gmail')
+    expect(tabKey('https://docs.google.com/a')).toBe('docs')
+    expect(tabKey('https://www.google.com/search?q=x')).toBe('google')
+    expect(tabKey('https://x.com')).toBeNull()
+    expect(tabKey('not a url')).toBeNull()
+  })
+  it('picks the tab for the site, on whole words, and only real tabs', () => {
+    const tabs = [tab('New repository'), tab('Array Data Structure - GeeksforGeeks'), tab('GitHub Universe'), tab('GitHub', 'button')]
+    expect(pickTab(tabs, 'https://github.com')?.name).toBe('GitHub Universe')
+    expect(pickTab(tabs, 'https://www.geeksforgeeks.org/dsa/x')?.name).toBe('Array Data Structure - GeeksforGeeks')
+    expect(pickTab(tabs, 'https://www.youtube.com')).toBeNull()
+    expect(pickTab([tab('Notgithubby page')], 'https://github.com')).toBeNull()
+    expect(pickTab(tabs, 'https://x.com')).toBeNull()
+  })
+  it('only navigates when a particular page was asked for', () => {
+    expect(isSiteHome('https://github.com')).toBe(true)
+    expect(isSiteHome('https://github.com/new')).toBe(false)
+    expect(isSiteHome('https://www.google.com/search?q=x')).toBe(false)
+  })
+})
 
 describe('desktop: the ring', () => {
   it('converts screen pixels to window DIPs around the text, never tiny', () => {

@@ -159,7 +159,8 @@ export class LiveBrain {
     clearTimeout(this.idleTimer)
     if (!was) return
     this.log(`live closed ${code} ${reason}`)
-    if (code === 1000 || code === 1005) this.set('closed')
+    // A quiet session timing out is normal, not a failure: the next turn just reconnects, in her own voice.
+    if (code === 1000 || code === 1005 || /inactivity/i.test(reason)) this.set('closed')
     else if (reason) this.classifyFailure(`${code} ${reason}`)
     else this.set('closed')
   }
