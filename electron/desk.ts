@@ -2,8 +2,9 @@ import { spawn, type ChildProcessWithoutNullStreams } from 'node:child_process'
 import { createInterface } from 'node:readline'
 import { dialog, screen } from 'electron'
 import { Vault } from '../eyes/shared/vault'
-import { describeControls, describeWindows, errorOnScreen, findText, hide, isPrivateWindow, pickWindow, redactOcr, riskOf, type Ctl, type OcrLine, type Win } from '../shared/desk'
+import { describeControls, describeWindows, errorOnScreen, findText, hide, isPrivateWindow, pickWindow, redactOcr, ringBox, riskOf, type Ctl, type OcrLine, type Win } from '../shared/desk'
 import type { Glance, WindowOp } from '../shared/types'
+import { showRing } from './ring'
 
 // Manyaki's hands and eyes on the desktop. A long-running PowerShell helper (assets/desk/host.ps1) does
 // the Win32 / UI Automation / OCR work; this side decides what she may see and do:
@@ -221,9 +222,21 @@ async function ocrRegion(r: { x: number; y: number; w: number; h: number }): Pro
 export async function clickText(target: string, double = false): Promise<string> {
   const lines = await ocrRegion(primary())
   const hit = findText(lines, target)
-  if (!hit) return `I can't see "${target}" on the screen`
+  if (!hit) return `I can't see "${target}" on the screen. Check see_screen and use words exactly as shown there, or scroll; don't guess names.`
   await call('click', { x: hit.x, y: hit.y, button: 'left', double })
   return `clicked "${hide(hit.text, taskVault(), shieldOn).slice(0, 60)}"`
+}
+
+/** Circles the visible text or control that matches, so they can see what she means. Clicks nothing. */
+export async function pointAt(target: string): Promise<string> {
+  const hit = findText(await ocrRegion(primary()), target)
+  const want = target.toLowerCase().trim()
+  const ctl = hit || !want ? null : lastTree.ctls.find((c) => c.w > 0 && c.name.toLowerCase().includes(want))
+  const spot = hit ?? (ctl && { x: ctl.x + ctl.w / 2, y: ctl.y + ctl.h / 2, w: ctl.w, h: ctl.h })
+  if (!spot) return `I can't see "${target}" on the screen. Check see_screen and use words exactly as shown there.`
+  const d = screen.getPrimaryDisplay()
+  await showRing(ringBox(spot, d.scaleFactor, d.bounds))
+  return `circled "${hide(target, taskVault(), shieldOn).slice(0, 60)}"`
 }
 
 /**

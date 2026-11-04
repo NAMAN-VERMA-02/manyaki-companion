@@ -6,6 +6,7 @@ import { Expressions } from './core/expressions'
 import { Blush, Emotes, Squash, tuneSpringBones } from './core/fx'
 import { Behavior } from './core/behavior'
 import { Laptop } from './core/laptop'
+import { TeacherProps } from './core/teacher'
 import { Bubble, StatusChip } from './ui/bubble'
 
 export type ClickZone = 'head' | 'body'
@@ -22,6 +23,7 @@ export class Stage {
   blush!: Blush
   emotes!: Emotes
   laptop!: Laptop
+  teacher!: TeacherProps
   squash!: Squash
   body!: Behavior
   readonly bubble = new Bubble()
@@ -40,6 +42,7 @@ export class Stage {
   private clickCount = 0
   private clickTimer = 0
   private last = performance.now()
+  private lastHitAt = 0
   private frames = 0
   private fpsT = 0
   private hiddenAlpha = false
@@ -61,13 +64,14 @@ export class Stage {
     this.blush = new Blush(this.avatar)
     this.emotes = new Emotes(this.avatar)
     this.laptop = new Laptop(this.avatar)
+    this.teacher = new TeacherProps(this.avatar)
     this.squash = new Squash(this.avatar)
     tuneSpringBones(this.avatar)
     this.body = new Behavior(this.avatar, this.motion, this.layers, this.face, this.emotes)
     this.body.setDisplay(this.display)
     this.body.squash = this.squash
 
-    this.interactive.push(this.bubble.element, document.getElementById('chat')!, document.getElementById('debug')!)
+    this.interactive.push(this.bubble.element, document.getElementById('chat')!, document.getElementById('debug')!, document.getElementById('mic-btn')!)
     window.addEventListener('resize', () => this.resize())
     window.addEventListener('mousemove', (e) => this.onMove(e))
     window.addEventListener('mousedown', (e) => this.onDown(e))
@@ -172,20 +176,27 @@ export class Stage {
     const m = this.body.mode
     if (m === 'walk' || m === 'fall' || m === 'jump' || m === 'drag' || m === 'land') return 60
     if (this.squash.active) return 60
-    if (this.body.conv === 'talking' || m === 'act' || this.laptop.busy) return saver ? 30 : 48
-    if (this.body.conv !== 'none' || this.hover || this.emotes.active || this.face.animating) return saver ? 24 : 40
+    if (this.body.conv === 'talking' || m === 'act' || this.laptop.busy) return saver ? 30 : 60
+    if (this.body.conv !== 'none' || this.hover || this.emotes.active || this.face.animating || this.teacher.animating) return saver ? 24 : 30
     if (m === 'sleep') return saver ? 6 : 15
     if (m === 'sit') return saver ? 10 : 30
     return saver ? 12 : 30
   }
 
   /**
-   * Frames are paced by a timer at the target rate and then aligned to vsync with one rAF, instead of
-   * waking at 60 Hz and skipping: idle wake-ups are what cost CPU on a transparent window.
+   * At 30 fps and up, every vsync is checked and skipped until a frame is due: measured on this laptop
+   * the old timer gave uneven 16/33 ms frames, and this gives an even 33 ms for no more CPU. Below
+   * that a timer is still cheaper, and frame pacing doesn't show when she's barely moving.
    */
   private schedule() {
-    const wait = Math.max(0, 1000 / this.targetFps() - (performance.now() - this.last) - 2)
-    setTimeout(() => requestAnimationFrame(this.loop), wait)
+    const fps = this.targetFps()
+    if (fps >= 30) { requestAnimationFrame(this.pace); return }
+    setTimeout(() => requestAnimationFrame(this.loop), Math.max(0, 1000 / fps - (performance.now() - this.last) - 2))
+  }
+
+  private readonly pace = (now: number) => {
+    if (now - this.last < 1000 / this.targetFps() - 4) requestAnimationFrame(this.pace)
+    else this.loop(now)
   }
 
   private readonly loop = (now: number) => {
@@ -209,15 +220,20 @@ export class Stage {
     this.avatar.vrm.update(dt)
     this.emotes.update(dt)
     this.laptop.update(dt)
+    this.teacher.update(dt)
     this.squash.update(dt)
     if (this.bridge.followWindow) this.followWindow()
     this.avatar.render()
 
     // Click-through: capture the mouse only over her pixels or our UI.
-    const overHer = !this.hiddenAlpha && this.avatar.hitTest(this.cursorX, this.cursorY)
-    if (overHer !== this.hover) {
-      this.hover = overHer
-      if (overHer) this.body.hoverSince = performance.now()
+    // Reading a pixel back stalls the GPU about 8 ms, so it's checked a dozen times a second, not every frame.
+    if (now - this.lastHitAt >= 80) {
+      this.lastHitAt = now
+      const overHer = !this.hiddenAlpha && this.avatar.hitTest(this.cursorX, this.cursorY)
+      if (overHer !== this.hover) {
+        this.hover = overHer
+        if (overHer) this.body.hoverSince = performance.now()
+      }
     }
     this.updateIgnore()
 
@@ -227,6 +243,11 @@ export class Stage {
     const cx = box.left + (box.right - box.left) / 2 - v.x
     this.bubble.place(cx, box.top - v.y)
     this.chip.place(cx, box.bottom - 26 - v.y)
+    // Beside her chest. Inside followWindow's width (her box + half her height), so it never gets cut off.
+    const mic = document.getElementById('mic-btn')!
+    mic.style.display = this.hiddenAlpha ? 'none' : ''
+    mic.style.left = `${cx + this.avatar.heightPx * 0.34}px`
+    mic.style.top = `${box.top + this.avatar.heightPx * 0.32 - v.y}px`
     const chat = document.getElementById('chat')!
     if (!chat.classList.contains('hidden')) {
       chat.style.left = `${Math.max(170, Math.min(window.innerWidth - 170, cx))}px`

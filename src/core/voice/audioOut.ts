@@ -1,22 +1,80 @@
 /**
  * Plays her voice: streamed 24 kHz PCM16 chunks from Gemini Live, or whole Float32 buffers from Kokoro.
  * Chunks are scheduled back-to-back for gapless speech. An analyser exposes the loudness for lip-sync.
+ * The context can die when the output device changes (a Bluetooth headset switching to its mic profile):
+ * its clock stops, so nothing plays and nothing ever ends. A stopped clock rebuilds it and replays what's left.
  */
 export class AudioOut {
-  readonly ctx = new AudioContext({ sampleRate: 24000, latencyHint: 'interactive' })
-  private readonly gain = this.ctx.createGain()
-  private readonly analyser = this.ctx.createAnalyser()
+  ctx!: AudioContext
+  private gain!: GainNode
+  private analyser!: AnalyserNode
   private readonly buf = new Float32Array(512)
-  private sources = new Set<AudioBufferSourceNode>()
+  private sources = new Map<AudioBufferSourceNode, { samples: Float32Array; rate: number; end: number }>()
+  private watchTimer = 0
+  private stalls = 0
+  private rebuilds = 0
   private playHead = 0
   private endedCb: (() => void) | null = null
   volume = 1
 
   constructor() {
+    this.build()
+    this.idleSuspend()
+  }
+
+  private build() {
+    const ctx = new AudioContext({ sampleRate: 24000, latencyHint: 'interactive' })
+    this.ctx = ctx
+    this.gain = ctx.createGain()
+    this.analyser = ctx.createAnalyser()
     this.analyser.fftSize = 512
     this.gain.connect(this.analyser)
-    this.analyser.connect(this.ctx.destination)
-    this.idleSuspend()
+    this.analyser.connect(ctx.destination)
+    ctx.addEventListener('error', () => { if (ctx === this.ctx) this.rebuild() })
+    this.playHead = 0
+  }
+
+  /** New context, with whatever hadn't finished playing queued again. Gives up after a few tries so she can't hang. */
+  private rebuild() {
+    const now = this.ctx.currentTime
+    const left = [...this.sources.values()].filter((s) => s.end > now)
+    for (const s of this.sources.keys()) s.onended = null
+    this.sources.clear()
+    void this.ctx.close().catch(() => undefined)
+    this.build()
+    if (++this.rebuilds > 3) {
+      console.warn('audio output keeps failing; dropping this speech')
+      this.rebuilds = 0
+      this.endedCb?.()
+      return
+    }
+    for (const s of left) this.enqueueFloat(s.samples, s.rate)
+    if (!this.sources.size) this.endedCb?.()
+  }
+
+  private watch() {
+    if (this.watchTimer) return
+    let seen = this.ctx.currentTime
+    this.watchTimer = window.setInterval(() => {
+      if (!this.sources.size) {
+        clearInterval(this.watchTimer)
+        this.watchTimer = 0
+        this.stalls = 0
+        return
+      }
+      if (this.ctx.currentTime !== seen) {
+        seen = this.ctx.currentTime
+        this.stalls = 0
+        this.rebuilds = 0
+        return
+      }
+      void this.resume()
+      if (++this.stalls >= 2) {
+        this.stalls = 0
+        this.rebuild()
+        seen = this.ctx.currentTime
+      }
+    }, 1000)
   }
 
   get speaking() { return this.sources.size > 0 }
@@ -52,7 +110,8 @@ export class AudioOut {
     const start = Math.max(now + (this.sources.size ? 0 : 0.05), this.playHead)
     src.start(start)
     this.playHead = start + ab.duration
-    this.sources.add(src)
+    this.sources.set(src, { samples, rate, end: this.playHead })
+    this.watch()
     src.onended = () => {
       this.sources.delete(src)
       if (!this.sources.size) { this.endedCb?.(); this.idleSuspend() }
@@ -70,7 +129,7 @@ export class AudioOut {
 
   /** Barge-in: silence immediately and drop everything queued. */
   stop() {
-    for (const s of this.sources) {
+    for (const s of this.sources.keys()) {
       s.onended = null
       try { s.stop() } catch { /* already stopped */ }
     }

@@ -27,6 +27,8 @@ export class LiveBrain {
   private idleTimer = 0
   private unavailableUntil = 0
   private generating = false
+  private toolsRunning = 0
+  private stuckTimer: ReturnType<typeof setTimeout> | undefined
   model = 'gemini-3.8-live'
   voiceName = 'Leda'
   lastError = ''
@@ -162,8 +164,27 @@ export class LiveBrain {
     else this.set('closed')
   }
 
+  /** The server sometimes never sends turnComplete: without this she stays "talking" and busy for good. */
+  private watchStuck() {
+    clearTimeout(this.stuckTimer)
+    if (!this.generating || this.toolsRunning) return
+    this.stuckTimer = setTimeout(() => {
+      this.log('live turn never completed; moving on')
+      this.generating = false
+      this.ev.onTurnComplete()
+    }, 25000)
+  }
+
   private onMessage(m: LiveServerMessage) {
     this.touch()
+    try {
+      this.handleMessage(m)
+    } finally {
+      this.watchStuck()
+    }
+  }
+
+  private handleMessage(m: LiveServerMessage) {
     if (m.sessionResumptionUpdate?.resumable && m.sessionResumptionUpdate.newHandle) {
       this.resumeHandle = m.sessionResumptionUpdate.newHandle
       this.resumeAt = Date.now()
@@ -172,7 +193,10 @@ export class LiveBrain {
       // Server will drop us soon; reconnect lazily on next use with the resumption handle.
       this.log(`live goAway ${m.goAway.timeLeft}`)
     }
-    if (m.toolCall?.functionCalls?.length) void this.answerTools(m.toolCall.functionCalls)
+    if (m.toolCall?.functionCalls?.length) {
+      this.generating = true
+      void this.answerTools(m.toolCall.functionCalls)
+    }
     const c = m.serverContent
     if (!c) return
     if (c.interrupted) {
@@ -195,6 +219,7 @@ export class LiveBrain {
 
   private async answerTools(calls: { id?: string; name?: string; args?: Record<string, unknown> }[]) {
     const session = this.session
+    this.toolsRunning++
     const responses = await Promise.all(calls.map(async (fc) => ({
       id: fc.id,
       name: fc.name,
@@ -203,7 +228,9 @@ export class LiveBrain {
       // gesture call (common), it prompts her to go on and actually speak. SILENT made her go mute.
       ...(NON_BLOCKING.has(fc.name ?? '') ? { scheduling: FunctionResponseScheduling.WHEN_IDLE } : {})
     })))
+    this.toolsRunning--
     if (session === this.session) this.session?.sendToolResponse({ functionResponses: responses })
+    this.watchStuck()
   }
 
   sendAudio(b64: string) {
@@ -235,6 +262,7 @@ export class LiveBrain {
 
   close() {
     clearTimeout(this.idleTimer)
+    clearTimeout(this.stuckTimer)
     const s = this.session
     this.session = null
     this.generating = false

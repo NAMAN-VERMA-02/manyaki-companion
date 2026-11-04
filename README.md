@@ -29,6 +29,9 @@ On first launch the Settings window opens:
 |---|---|
 | Talk (hands-free or `Ctrl+Alt+Space`) | answers out loud, with lip-sync and expressions. Interrupt her any time by speaking or clicking her |
 | Double-click her | opens a chat box |
+| Click the 🎤 beside her | mutes or unmutes her mic |
+| Ask about a concept ("array kya hai?") | puts on her glasses, picks up her stick and teaches on her blackboard: animated arrays, variables, lists, trees and code, plus quizzes you click and a box for questions |
+| Ask about a site or app, or open an article | teaches it live on the screen: circles what she talks about, clicks through, types examples into fields (never submits), and scrolls and explains to the end. Say "stop" or "ruk jao" any time |
 | Pat her head | gets a headpat: closes her eyes, blushes, ♥ |
 | Poke her body | giggles and hops. Poke too much and she pouts 💢 |
 | Drag her | dangles from your cursor. Throw her and she falls, bounces and lands |

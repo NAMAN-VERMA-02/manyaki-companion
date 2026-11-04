@@ -5,6 +5,8 @@ import { join } from 'node:path'
 import { pathToFileURL } from 'node:url'
 import type { Command, DisplayInfo, Settings } from '../shared/types'
 import { startActivityWatcher } from './activity'
+import { hideRing } from './ring'
+import { applyDraw, type BoardState } from '../shared/board'
 import * as store from './store'
 import { runAction, type ActionKind } from './actions'
 import { eyesInfo, eyesTask, newPairingCode, setEyesProvider, startEyes, stopEyes } from './eyes'
@@ -89,13 +91,13 @@ function displayInfo(): DisplayInfo {
   return { bounds: d.bounds, workArea: d.workArea, scaleFactor: d.scaleFactor }
 }
 
-function rendererUrl(page: 'index' | 'settings'): { url?: string; file?: string } {
+function rendererUrl(page: 'index' | 'settings' | 'board'): { url?: string; file?: string } {
   const dev = process.env.ELECTRON_RENDERER_URL
   if (dev) return { url: `${dev}/${page}.html` }
   return { file: join(__dirname, `../renderer/${page}.html`) }
 }
 
-function load(win: BrowserWindow, page: 'index' | 'settings') {
+function load(win: BrowserWindow, page: 'index' | 'settings' | 'board') {
   const target = rendererUrl(page)
   const args = DEBUG ? { query: { debug: '1' } } : undefined
   if (target.url) void win.loadURL(target.url + (DEBUG ? '?debug=1' : ''))
@@ -158,6 +160,52 @@ let quitting = false
 let lastStatus: unknown = null
 
 /** The Home window: her control centre (status, toggles, focus, goals, chat) plus all settings. */
+let boardWin: BrowserWindow | null = null
+let boardLoaded = false
+const EMPTY_BOARD: BoardState = { title: '', owner: '', items: [] }
+let boardState = EMPTY_BOARD
+
+/** Her blackboard: beside her, on top of what they're working on, without taking the keyboard from them. */
+function showBoard() {
+  if (boardWin && !boardWin.isDestroyed()) {
+    if (boardLoaded) boardWin.webContents.send('board', boardState)
+    if (!boardWin.isVisible()) boardWin.showInactive()
+    return
+  }
+  const { workArea } = displayInfo()
+  const width = Math.min(860, workArea.width - 440)
+  const height = Math.round(workArea.height * 0.84)
+  boardWin = new BrowserWindow({
+    x: workArea.x + 16,
+    y: workArea.y + Math.round((workArea.height - height) / 2),
+    width: Math.max(420, width),
+    height,
+    minWidth: 360,
+    minHeight: 300,
+    frame: false,
+    skipTaskbar: true,
+    show: false,
+    title: 'Manyaki',
+    backgroundColor: '#1f3a31',
+    webPreferences: { preload: join(__dirname, '../preload/index.cjs'), sandbox: false, contextIsolation: true }
+  })
+  boardWin.setAlwaysOnTop(true, 'floating')
+  boardWin.webContents.setWindowOpenHandler(() => ({ action: 'deny' }))
+  boardWin.webContents.on('will-navigate', (e) => e.preventDefault())
+  load(boardWin, 'board')
+  boardWin.webContents.on('did-finish-load', () => {
+    boardLoaded = true
+    boardWin?.webContents.send('board', boardState)
+  })
+  boardWin.once('ready-to-show', () => boardWin?.showInactive())
+  boardWin.on('closed', () => {
+    boardWin = null
+    boardLoaded = false
+    boardState = EMPTY_BOARD
+    command({ type: 'board-closed' })
+  })
+}
+
 function openHome(tab: 'home' | 'settings' = 'home', inactive = false) {
   if (settingsWin && !settingsWin.isDestroyed()) {
     if (settingsWin.isMinimized()) settingsWin.restore()
@@ -383,6 +431,8 @@ function registerIpc() {
   deskOp('press', (id: string) => desk.pressControl(String(id)))
   deskOp('type-into', (id: string, t: string) => desk.typeInto(String(id), String(t)))
   deskOp('type', (t: string) => desk.typeText(String(t)))
+  deskOp('point', (t: string) => desk.pointAt(String(t)))
+  deskOp('ring-off', async () => hideRing())
   deskOp('keys', (c: string) => desk.pressKeys(String(c)))
   deskOp('scroll', (d: string, n?: number) => desk.scroll(d === 'up' || d === 'top' || d === 'bottom' ? d : 'down', Number(n) || 3))
   deskOp('click-text', (t: string, dbl?: boolean) => desk.clickText(String(t), !!dbl))
@@ -461,6 +511,15 @@ function registerIpc() {
   ipcMain.on('settings:open', openSettings)
   ipcMain.on('home:open', () => openHome('home'))
   ipcMain.on('command:send', (_e, cmd: Command) => command(cmd))
+  ipcMain.handle('board:draw', (e, args: Record<string, unknown>, owner: string) => {
+    if (!fromOurWindow(e.sender)) return 'not allowed'
+    const { state, drawn } = applyDraw({ ...boardState, owner: String(owner ?? '').slice(0, 40) }, args ?? {})
+    if (!drawn) return 'nothing valid to draw: check each item has the fields its type needs'
+    boardState = state
+    showBoard()
+    return `on the board now: ${state.items.map((i) => `${i.id} (${i.type})`).join(', ')}`
+  })
+  ipcMain.handle('board:close', () => { if (boardWin && !boardWin.isDestroyed()) boardWin.close() })
   ipcMain.on('status:report', (_e, st: unknown) => {
     lastStatus = st
     if (settingsWin && !settingsWin.isDestroyed()) settingsWin.webContents.send('status', st)

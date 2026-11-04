@@ -103,6 +103,7 @@ export class Expressions {
   eyesClosed = false
   /** 0..1 mouth openness and a viseme index, written by the lip-sync each frame. */
   mouth = 0
+  private mouthDamp = 1
   private viseme = 0
   private visemeTimer = 0
   private curVis: Record<string, number> = { aa: 0, ih: 0, ou: 0, ee: 0, oh: 0 }
@@ -181,7 +182,8 @@ export class Expressions {
     }
     const talking = this.mouth > 0.02
     // Smiling while talking would fight the mouth shapes; soften the mouth-heavy emotion weights.
-    const mouthDamp = talking ? 0.55 : 1
+    this.mouthDamp += ((talking ? 0.55 : 1) - this.mouthDamp) * (1 - Math.exp(-dt * 10))
+    const mouthDamp = this.mouthDamp
     for (let i = 0; i < VISEMES.length; i++) {
       const v = VISEMES[i]
       const want = talking && i === this.viseme ? Math.min(1, this.mouth * 1.25) : 0

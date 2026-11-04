@@ -45,6 +45,8 @@ const bridge: Bridge = {
     keys: (c) => ipcRenderer.invoke('desk:keys', c),
     scroll: (d, n) => ipcRenderer.invoke('desk:scroll', d, n),
     clickText: (t, dbl) => ipcRenderer.invoke('desk:click-text', t, dbl),
+    point: (t) => ipcRenderer.invoke('desk:point', t),
+    ringOff: () => ipcRenderer.invoke('desk:ring-off'),
     seeScreen: () => ipcRenderer.invoke('desk:see'),
     screenshot: () => ipcRenderer.invoke('desk:screenshot')
   },
@@ -55,6 +57,8 @@ const bridge: Bridge = {
     openExtensionFolder: () => ipcRenderer.invoke('eyes:open-extension')
   },
   sendCommand: (cmd) => ipcRenderer.send('command:send', cmd),
+  boardDraw: (args, owner) => ipcRenderer.invoke('board:draw', args, owner),
+  boardClose: () => ipcRenderer.invoke('board:close'),
   reportStatus: (s) => ipcRenderer.send('status:report', s),
   showMenu: () => ipcRenderer.send('menu:popup'),
   listAnims: () => ipcRenderer.invoke('anims:list'),

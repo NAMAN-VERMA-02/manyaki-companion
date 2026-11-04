@@ -1,10 +1,22 @@
 import { describe, expect, it } from 'vitest'
-import { describeControls, describeWindows, errorOnScreen, findText, hide, isPrivateWindow, pickWindow, redactOcr, riskOf, type Ctl, type OcrLine, type Win } from '../shared/desk'
+import { describeControls, describeWindows, errorOnScreen, findText, hide, isPrivateWindow, pickWindow, redactOcr, ringBox, ringHtml, riskOf, type Ctl, type OcrLine, type Win } from '../shared/desk'
 import { Vault } from '../eyes/shared/vault'
 import { asBullets, isRecallQuestion, search, touch, tokens } from '../shared/recall'
 import { addMinute, EMPTY_USAGE, routines, usualNow } from '../shared/patterns'
 
 const win = (app: string, title: string, extra: Partial<Win> = {}): Win => ({ hwnd: Math.floor(Math.random() * 1e6), title, pid: 1, app, x: 0, y: 0, w: 800, h: 600, min: false, max: false, active: false, ...extra })
+
+describe('desktop: the ring', () => {
+  it('converts screen pixels to window DIPs around the text, never tiny', () => {
+    expect(ringBox({ x: 300, y: 200, w: 100, h: 20 }, 2, { x: 0, y: 0 })).toEqual({ x: 107, y: 76, w: 86, h: 48 })
+    expect(ringBox({ x: 300, y: 200, w: 400, h: 100 }, 1, { x: 100, y: 50 })).toEqual({ x: -18, y: 86, w: 436, h: 128 })
+  })
+  it('page only ever holds numbers from the box', () => {
+    const html = ringHtml({ x: 'x;}</style><script>' as unknown as number, y: 2, w: 3, h: 4 })
+    expect(html).not.toContain('<script>')
+    expect(html).toContain('left:0px')
+  })
+})
 
 describe('desktop: choosing windows', () => {
   const wins = [win('chrome', 'lofi beats - YouTube - Google Chrome'), win('Code', 'main.ts - manyaki - Visual Studio Code', { active: true }), win('explorer', 'Downloads - File Explorer')]

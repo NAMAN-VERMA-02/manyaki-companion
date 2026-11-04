@@ -41,6 +41,13 @@ export class LocalVoice {
     })
   }
 
+  /** Resolves once everything queued has been said (or after maxMs), so her hands don't run ahead of her words. */
+  async drained(maxMs = 20000) {
+    const until = Date.now() + maxMs
+    await Promise.race([this.queue, new Promise((r) => setTimeout(r, maxMs))])
+    while (this.out.speaking && Date.now() < until) await new Promise((r) => setTimeout(r, 100))
+  }
+
   stop() {
     this.generation++
     speechSynthesis.cancel()

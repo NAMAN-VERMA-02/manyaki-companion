@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { moodFromReply, parseIntent } from '../shared/intents'
+import { isStopRequest, isTourRequest, moodFromReply, parseIntent } from '../shared/intents'
 
 describe('parseIntent (English + Hinglish)', () => {
   it('opens folders, websites and apps', () => {
@@ -33,6 +33,20 @@ describe('parseIntent (English + Hinglish)', () => {
     expect(parseIntent('aaj padhai ka mood nahi hai yaar')).toBeNull()
     expect(parseIntent('explain recursion simply')).toBeNull()
     expect(parseIntent('I am tired')).toBeNull()
+  })
+})
+
+describe('isStopRequest', () => {
+  it('stops a lesson on clear words, not on ordinary ones', () => {
+    for (const q of ['stop', 'ruk jao', 'bas karo yaar', 'chup']) expect(isStopRequest(q)).toBe(true)
+    for (const q of ['bas ek sawal hai', 'how do I make a repo', 'next step batao']) expect(isStopRequest(q)).toBe(false)
+  })
+})
+
+describe('isTourRequest', () => {
+  it('catches questions about things, in English and Hinglish, but not chit-chat', () => {
+    for (const q of ['GitHub kya hai?', 'repo kaise banate hain', 'how do I make a repo', "what's a pull request", 'settings kahan hai', 'show me around']) expect(isTourRequest(q)).toBe(true)
+    for (const q of ['good morning', 'open youtube', 'thanks yaar', 'start a focus session', 'kaise ho', 'aur batao', "what's up"]) expect(isTourRequest(q)).toBe(false)
   })
 })
 

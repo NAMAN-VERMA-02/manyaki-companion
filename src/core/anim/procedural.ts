@@ -196,6 +196,14 @@ export const PROCEDURAL: Record<string, ClipSpec> = {
       [0, base(typePose(0))], [0.125, base(typePose(1))], [0.25, base(typePose(2))], [0.375, base(typePose(1))], [0.5, base(typePose(0))]
     ]
   },
+  // Teaching: stick held out to her right (the screen side when she stands at the right edge), a slow sway.
+  teach: {
+    duration: 4, loop: true, keys: [
+      [0, base({ rightUpperArm: [5, 22, 0], rightLowerArm: [0, -22, 0], spine: [0, 0, 1], head: [0, -6, 2] })],
+      [2, base({ rightUpperArm: [8, 16, 0], rightLowerArm: [0, -30, 0], spine: [0, 0, 2], head: [1, -10, 3] })],
+      [4, base({ rightUpperArm: [5, 22, 0], rightLowerArm: [0, -22, 0], spine: [0, 0, 1], head: [0, -6, 2] })]
+    ]
+  },
   headpat: {
     duration: 2, loop: false, keys: [
       [0, base({})], [0.3, base({ head: [10, 0, 10], neck: [6, 0, 0], spine: [4, 0, 0] })],

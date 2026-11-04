@@ -22,12 +22,18 @@ export interface ToolHost {
   browserTask(task: string): Promise<string>
   /** Desktop hands (windows, apps' controls, keys, mouse) and eyes (what's on screen). */
   desk(op: DeskOp, args: Record<string, unknown>): Promise<string>
+  /** Teacher mode: glasses and stick, stands at the edge, keeps teaching until end_lesson. */
+  startLesson(topic: string): string
+  endLesson(): string
+  /** Her blackboard: draws and animates what she's explaining. */
+  boardDraw(args: Record<string, unknown>): Promise<string>
+  boardClose(): string
   /** Searches her private memory (bullets on this PC) for what's relevant to a question. */
   recall(query: string): Promise<string>
 }
 
-export type DeskOp = 'see_screen' | 'list_windows' | 'window' | 'close_windows' | 'read_app' | 'press_control' | 'type_into' | 'type_text' | 'press_keys' | 'click_on' | 'scroll'
-const DESK_OPS = new Set<string>(['see_screen', 'list_windows', 'window', 'close_windows', 'read_app', 'press_control', 'type_into', 'type_text', 'press_keys', 'click_on', 'scroll'])
+export type DeskOp = 'see_screen' | 'list_windows' | 'window' | 'close_windows' | 'read_app' | 'press_control' | 'type_into' | 'type_text' | 'press_keys' | 'click_on' | 'scroll' | 'point_at'
+const DESK_OPS = new Set<string>(['see_screen', 'list_windows', 'window', 'close_windows', 'read_app', 'press_control', 'type_into', 'type_text', 'press_keys', 'click_on', 'scroll', 'point_at'])
 
 export const NON_BLOCKING = new Set(['react'])
 
@@ -159,6 +165,54 @@ export function toolDeclarations(live: boolean): FunctionDeclaration[] {
       parameters: { type: Type.OBJECT, properties: { direction: { type: Type.STRING, enum: ['up', 'down', 'top', 'bottom'] }, amount: { type: Type.NUMBER, description: '1-15 notches, default 3 (about a third of a screen)' } }, required: ['direction'] }
     },
     {
+      name: 'point_at',
+      description: 'Draw a pink circle on their screen around visible text or a control, to show what you are talking about while you explain it. Clicks nothing. Use the words exactly as shown on the screen.',
+      parameters: { type: Type.OBJECT, properties: { text: { type: Type.STRING } }, required: ['text'] }
+    },
+    {
+      name: 'board_draw',
+      description: 'Draw on your blackboard while you teach a concept. Redraw an item with the same id to animate it (change values, move highlight or pointers). Use fresh:true for a new topic.',
+      parameters: {
+        type: Type.OBJECT,
+        properties: {
+          title: { type: Type.STRING, description: 'short topic title' },
+          fresh: { type: Type.BOOLEAN, description: 'clear the board first' },
+          items: {
+            type: Type.ARRAY,
+            items: {
+              type: Type.OBJECT,
+              properties: {
+                id: { type: Type.STRING, description: 'give one to anything you will update, like "marks"' },
+                type: { type: Type.STRING, enum: ['text', 'list', 'code', 'array', 'var', 'graph', 'quiz'] },
+                text: { type: Type.STRING, description: 'text, code, a quiz question, or the caption of an array or graph' },
+                values: { type: Type.ARRAY, items: { type: Type.STRING }, description: 'list lines, array cells, graph node labels or quiz options' },
+                highlight: { type: Type.ARRAY, items: { type: Type.NUMBER }, description: 'indexes of cells or nodes to light up' },
+                pointers: { type: Type.ARRAY, items: { type: Type.STRING }, description: 'array arrows as "index:label", like "0:low"' },
+                name: { type: Type.STRING, description: 'var: the variable name' },
+                value: { type: Type.STRING, description: 'var: its value' },
+                edges: { type: Type.ARRAY, items: { type: Type.STRING }, description: 'graph links as node indexes "0-1"' },
+                layout: { type: Type.STRING, enum: ['line', 'tree'], description: 'graph: line for a linked list or stack, tree for trees and graphs' },
+                answer: { type: Type.NUMBER, description: 'quiz: index of the right option' }
+              },
+              required: ['type']
+            }
+          }
+        },
+        required: ['items']
+      }
+    },
+    { name: 'board_close', description: 'Put the blackboard away when they are done with it.', parameters: { type: Type.OBJECT, properties: {} } },
+    {
+      name: 'start_lesson',
+      description: 'Start teaching something live on their screen: your glasses and pointer stick pop out and you walk to the edge of the screen. Call it first whenever they ask about something on the computer or want a page taught.',
+      parameters: { type: Type.OBJECT, properties: { topic: { type: Type.STRING } }, required: ['topic'] }
+    },
+    {
+      name: 'end_lesson',
+      description: 'Finish the lesson once everything is covered or they tell you to stop. Until you call this, you keep teaching.',
+      parameters: { type: Type.OBJECT, properties: {} }
+    },
+    {
       name: 'recall_memory',
       description: 'Search your private memory of them (kept on their PC) for what is relevant: their plans, preferences, people, routines, past conversations. Use it when they ask what you remember or when an answer depends on something they told you before. Takes a moment.',
       parameters: { type: Type.OBJECT, properties: { query: { type: Type.STRING } }, required: ['query'] }
@@ -198,6 +252,10 @@ export async function runTool(host: ToolHost, name: string, args: Record<string,
       case 'look_at_screen': return { result: await host.lookAtScreen(String(args.question ?? '')) }
       case 'browser_task': return { result: await host.browserTask(String(args.task ?? '')) }
       case 'recall_memory': return { result: await host.recall(String(args.query ?? '')) }
+      case 'start_lesson': return { result: host.startLesson(String(args.topic ?? '')) }
+      case 'end_lesson': return { result: host.endLesson() }
+      case 'board_draw': return { result: await host.boardDraw(args) }
+      case 'board_close': return { result: host.boardClose() }
       default:
         if (DESK_OPS.has(name)) return { result: await host.desk(name as DeskOp, args) }
         return { error: `unknown tool ${name}` }

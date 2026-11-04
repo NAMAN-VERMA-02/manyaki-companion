@@ -107,6 +107,21 @@ export function isTeachRequest(t: string): boolean {
   return /\b(explain|teach|tutor|walk me through|how (does|do|to)|what (is|are|does)|why (is|does|do)|help me understand|i don'?t (get|understand)|quiz me|samjha|samjhao|samjha do|samajh nahi|samjh nahi|sikha|sikhao|kya hota|kaise (karte|hota|kaam)|matlab kya)\b/i.test(t)
 }
 
+/** A question that could mean "show me": she looks at the screen first, then tours it if it's about the computer. */
+export function isTourRequest(t: string): boolean {
+  if (/\b(kaise ho|kaisi ho|kaise hain|aur batao|kya haal|what'?s up)\b/i.test(t)) return false
+  return isTeachRequest(t) || /\b(kya hai|kya he|kaise|kaha|kahan|batao|bata do|dikhao|dikha do|show me|tutorial|guide me|where (is|do|can)|what'?s)\b/i.test(t)
+}
+
+/** Added to such a question on its way to the model (never shown or stored): models skip the persona rule otherwise. */
+export const TOUR_HINT = "\n\n(Note from the app, not from them: do not explain this from memory with only words and do not use an analogy. If it is a concept, call board_draw now and teach it on your blackboard step by step. If it is about a website or app on the computer, call start_lesson and teach it live on the screen. Do not ask if it makes sense.)"
+
+/** Sent after each of her turns while a lesson is on, so she carries on instead of waiting to be asked. */
+export const LESSON_NEXT = "The lesson you are teaching continues; they are still following along. Carry on from exactly where you stopped with the next step: on the blackboard, draw or update the next thing; on the screen, look, circle what you talk about, and scroll a little if you finished what is visible. Don't greet, recap or ask if it makes sense. Only when the whole topic or page is covered, recap in a sentence and call end_lesson."
+
+/** "stop / ruk jao / bas karo": a lesson ends right away, whatever the model would have done. */
+export const isStopRequest = (t: string) => /\b(stop|ruk|ruko|ruk jao|bas karo|bas kar|band karo|enough|that'?s enough|shut up|chup)\b/i.test(t)
+
 /** "look at my screen / ye kya hai screen pe / what's this error": take one screenshot (cloud only). */
 export function isScreenRequest(t: string): boolean {
   return /\b(look at|see|check|dekh|dekho|dekhna)\b.*\b(screen|this|ye|yeh|error)\b|\b(screen pe|screen par|on my screen)\b|\bwhat'?s (this|on my screen)\b|\bye kya hai\b/i.test(t)

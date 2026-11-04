@@ -1,4 +1,4 @@
-import { describe, expect, it } from 'vitest'
+import { describe, expect, it, vi } from 'vitest'
 import { classify } from '../electron/classify'
 import { DEFAULT_SETTINGS, EMPTY_MEMORY } from '../shared/types'
 import * as mem from '../src/core/brain/memoryLogic'
@@ -7,6 +7,8 @@ import { letterFileName, offlineLetter, parseLetter } from '../src/core/letters'
 import { EMOTIONS, faceInfo } from '../src/core/expressions'
 import { runTool, type ToolHost } from '../src/core/brain/tools'
 import { systemInstruction } from '../src/core/brain/persona'
+import { TextBrain } from '../src/core/brain/text'
+import { LiveBrain } from '../src/core/brain/live'
 import { splitSentences } from '../src/core/voice/localVoice'
 import { slotForFile } from '../src/core/anim/clips'
 
@@ -165,6 +167,10 @@ describe('tools', () => {
     remember: (f) => `rem ${f}`,
     setUserName: (n) => `name ${n}`,
     openThing: async (k, t) => `${k} ${t}`,
+    startLesson: (t) => `lesson ${t}`,
+    endLesson: () => 'ended',
+    boardDraw: async () => 'drawn',
+    boardClose: () => 'closed',
     lookAtScreen: async (q) => `looked: ${q}`,
     browserTask: async (t) => `browser: ${t}`,
     desk: async (op, a) => `desk ${op} ${JSON.stringify(a)}`,
@@ -180,6 +186,10 @@ describe('tools', () => {
     expect(await runTool(host, 'browser_task', { task: 'search for earbuds' })).toEqual({ result: 'browser: search for earbuds' })
     expect(await runTool(host, 'window', { which: 'chrome', action: 'close' })).toEqual({ result: 'desk window {"which":"chrome","action":"close"}' })
     expect(await runTool(host, 'recall_memory', { query: 'exam' })).toEqual({ result: 'recall exam' })
+    expect(await runTool(host, 'start_lesson', { topic: 'GitHub' })).toEqual({ result: 'lesson GitHub' })
+    expect(await runTool(host, 'end_lesson')).toEqual({ result: 'ended' })
+    expect(await runTool(host, 'board_draw', { items: [] })).toEqual({ result: 'drawn' })
+    expect(await runTool(host, 'board_close')).toEqual({ result: 'closed' })
     expect(await runTool(host, 'mystery')).toHaveProperty('error')
   })
 })
@@ -196,7 +206,96 @@ describe('detailed emotions', () => {
   })
 })
 
+describe('live turns', () => {
+  it('moves on if the server never finishes a turn, but never while a tool is running', async () => {
+    vi.useFakeTimers()
+    vi.stubGlobal('window', globalThis)
+    try {
+      const done: string[] = []
+      let finishTool: (v: string) => void = () => undefined
+      const host = { desk: () => new Promise((r) => { finishTool = r }) } as unknown as ToolHost
+      const events = { onTurnComplete: () => done.push('turn') } as unknown as ConstructorParameters<typeof LiveBrain>[0]
+      const live = new LiveBrain(events, host, () => '', () => undefined)
+      const msg = (live as unknown as { onMessage(m: unknown): void })
+      msg.onMessage({ toolCall: { functionCalls: [{ id: '1', name: 'see_screen', args: {} }] } })
+      await vi.advanceTimersByTimeAsync(60000)
+      expect(done).toEqual([]) // the tool is still running
+      finishTool('ok')
+      await vi.advanceTimersByTimeAsync(24000)
+      expect(live.busy).toBe(true)
+      await vi.advanceTimersByTimeAsync(2000)
+      expect(done).toEqual(['turn'])
+      expect(live.busy).toBe(false)
+      live.close()
+    } finally {
+      vi.useRealTimers()
+      vi.unstubAllGlobals()
+    }
+  })
+})
+
+describe('agent loop', () => {
+  const step = (text: string, tool?: string) => ({
+    text,
+    functionCalls: tool ? [{ id: tool, name: tool, args: {} }] : [],
+    candidates: [{ content: { role: 'model', parts: [] } }]
+  })
+  const brain = (steps: ReturnType<typeof step>[], onTool: (op: string) => void) => {
+    const host = { desk: async (op: string) => { onTool(op); return 'ok' } } as unknown as ToolHost
+    const b = new TextBrain(host, () => undefined)
+    let i = 0
+    ;(b as unknown as { ai: unknown }).ai = { models: { generateContent: async () => steps[i++] } }
+    return b
+  }
+  it('keeps going after a line spoken next to a tool call, in order', async () => {
+    const log: string[] = []
+    const b = brain([step('First I look.', 'see_screen'), step('Now I click Repositories.', 'click_on'), step('', 'see_screen'), step('That is the tour.')], (op) => log.push(`tool ${op}`))
+    const r = await b.reply('sys', [], { text: 'github kya hai' }, { onSay: (t) => log.push(`say ${t}`) })
+    expect(log).toEqual(['say First I look.', 'tool see_screen', 'say Now I click Repositories.', 'tool click_on', 'tool see_screen'])
+    expect(r.text).toBe('That is the tour.')
+  })
+  it('forces a look at the screen first on a tour, only on the first round', async () => {
+    const modes: unknown[] = []
+    const host = { desk: async () => 'ok' } as unknown as ToolHost
+    const b = new TextBrain(host, () => undefined)
+    const steps = [step('', 'see_screen'), step('Done.')]
+    ;(b as unknown as { ai: unknown }).ai = { models: { generateContent: async (p: { config: { toolConfig?: { functionCallingConfig: { allowedFunctionNames: string[] } } } }) => {
+      modes.push(p.config.toolConfig?.functionCallingConfig.allowedFunctionNames)
+      return steps[modes.length - 1]
+    } } }
+    await b.reply('sys', [], { text: 'x' }, { lookFirst: true })
+    expect(modes).toEqual([['see_screen'], undefined])
+  })
+  it('moves to the lite model when the main one is out of quota', async () => {
+    const b = new TextBrain({} as ToolHost, () => undefined)
+    const models: string[] = []
+    ;(b as unknown as { ai: unknown }).ai = { models: { generateContent: async (p: { model: string }) => {
+      models.push(p.model)
+      if (p.model !== b.liteModel) throw new Error('{"error":{"code":429,"message":"quota"}}')
+      return step('Still here.')
+    } } }
+    expect((await b.reply('sys', [], { text: 'x' })).text).toBe('Still here.')
+    expect(models).toEqual([b.model, b.liteModel])
+  })
+  it('returns everything together without onSay, and stops when they say something new', async () => {
+    const r = await brain([step('On it.', 'see_screen'), step('Done.')], () => undefined).reply('sys', [], { text: 'x' })
+    expect(r.text).toBe('On it. Done.')
+    let tools = 0
+    let stale = false
+    const b = brain([step('One.', 'click_on'), step('Two.', 'click_on')], () => { tools++; stale = true })
+    expect((await b.reply('sys', [], { text: 'x' }, { stale: () => stale })).text).toBe('One.')
+    expect(tools).toBe(1)
+  })
+})
+
 describe('persona', () => {
+  it('tours things on the computer, safely, unless screen sense is off', () => {
+    const ctx = { memory: EMPTY_MEMORY, activity: null, shareTitles: false, focus: null }
+    expect(systemInstruction(ctx)).toContain("SHOW, DON'T TELL")
+    expect(systemInstruction(ctx)).toContain('Never create, submit, save, send, buy, delete')
+    expect(systemInstruction(ctx)).toContain('start_lesson')
+    expect(systemInstruction({ ...ctx, screenSense: false })).not.toContain("SHOW, DON'T TELL")
+  })
   it('is professional by default and playful only with emotional attachment on', () => {
     const ctx = { memory: EMPTY_MEMORY, activity: null, shareTitles: false, focus: null }
     const pro = systemInstruction(ctx)
