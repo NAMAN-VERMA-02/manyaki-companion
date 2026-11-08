@@ -2,6 +2,7 @@ import { Behavior, Type, type FunctionDeclaration } from '@google/genai'
 import { ACTIONS, type Action } from '../behavior'
 import { EMOTIONS, type Emotion } from '../expressions'
 import { EMOTES } from '../fx'
+import { ICON_NAMES } from '../../../shared/board'
 
 export { EMOTIONS }
 
@@ -22,12 +23,19 @@ export interface ToolHost {
   browserTask(task: string): Promise<string>
   /** Desktop hands (windows, apps' controls, keys, mouse) and eyes (what's on screen). */
   desk(op: DeskOp, args: Record<string, unknown>): Promise<string>
+  /** Teacher mode: glasses and stick, stands at the edge, keeps teaching until end_lesson. */
+  startLesson(topic: string): string
+  /** The model asking to finish; a lesson that has barely started says carry on. */
+  finishLesson(): string
+  /** Her blackboard: draws and animates what she's explaining. */
+  boardDraw(args: Record<string, unknown>): Promise<string>
+  boardClose(): string
   /** Searches her private memory (bullets on this PC) for what's relevant to a question. */
   recall(query: string): Promise<string>
 }
 
-export type DeskOp = 'see_screen' | 'list_windows' | 'window' | 'close_windows' | 'read_app' | 'press_control' | 'type_into' | 'type_text' | 'press_keys' | 'click_on' | 'scroll'
-const DESK_OPS = new Set<string>(['see_screen', 'list_windows', 'window', 'close_windows', 'read_app', 'press_control', 'type_into', 'type_text', 'press_keys', 'click_on', 'scroll'])
+export type DeskOp = 'see_screen' | 'list_windows' | 'window' | 'close_windows' | 'read_app' | 'press_control' | 'type_into' | 'type_text' | 'press_keys' | 'click_on' | 'scroll' | 'point_at'
+const DESK_OPS = new Set<string>(['see_screen', 'list_windows', 'window', 'close_windows', 'read_app', 'press_control', 'type_into', 'type_text', 'press_keys', 'click_on', 'scroll', 'point_at'])
 
 export const NON_BLOCKING = new Set(['react'])
 
@@ -159,6 +167,60 @@ export function toolDeclarations(live: boolean): FunctionDeclaration[] {
       parameters: { type: Type.OBJECT, properties: { direction: { type: Type.STRING, enum: ['up', 'down', 'top', 'bottom'] }, amount: { type: Type.NUMBER, description: '1-15 notches, default 3 (about a third of a screen)' } }, required: ['direction'] }
     },
     {
+      name: 'point_at',
+      description: 'Draw a pink circle on their screen around visible text or a control, to show what you are talking about while you explain it. Clicks nothing. Use the words exactly as shown on the screen.',
+      parameters: { type: Type.OBJECT, properties: { text: { type: Type.STRING } }, required: ['text'] }
+    },
+    {
+      name: 'board_draw',
+      description: 'Draw on your blackboard while you teach. Every idea starts as a picture (graph, array, var or chart); words alone are refused until one is up, and never twice in a row. At most 3 items a call: draw one idea, say all of it out loud, then draw the next. Write short notes, not paragraphs. Redraw an item with the same id to animate it (change values, move highlight or pointers, add a mark). Use fresh:true for a new topic.',
+      parameters: {
+        type: Type.OBJECT,
+        properties: {
+          title: { type: Type.STRING, description: 'short topic title' },
+          fresh: { type: Type.BOOLEAN, description: 'clear the board first' },
+          items: {
+            type: Type.ARRAY,
+            items: {
+              type: Type.OBJECT,
+              properties: {
+                id: { type: Type.STRING, description: 'give one to anything you will update, like "marks"' },
+                type: { type: Type.STRING, enum: ['heading', 'text', 'note', 'list', 'code', 'array', 'var', 'graph', 'chart', 'quiz'] },
+                heading: { type: Type.STRING, description: 'code: required, what this code does' },
+                text: { type: Type.STRING, description: 'text, a boxed note (the takeaway), code, a quiz question, or the caption of an array, graph or chart' },
+                values: { type: Type.ARRAY, items: { type: Type.STRING }, description: 'list lines, array cells, graph node labels, chart numbers or quiz options' },
+                labels: { type: Type.ARRAY, items: { type: Type.STRING }, description: 'chart: the name for each number' },
+                kind: { type: Type.STRING, enum: ['bar', 'line', 'pie'], description: 'chart: how to draw it' },
+                mark: { type: Type.STRING, enum: ['circle', 'underline', 'box'], description: 'scribble chalk over this item to point at it' },
+                highlight: { type: Type.ARRAY, items: { type: Type.NUMBER }, description: 'indexes of cells or nodes to light up' },
+                pointers: { type: Type.ARRAY, items: { type: Type.STRING }, description: 'array arrows as "index:label", like "0:low"' },
+                name: { type: Type.STRING, description: 'var: the variable name' },
+                value: { type: Type.STRING, description: 'var: its value' },
+                edges: { type: Type.ARRAY, items: { type: Type.STRING }, description: 'graph links as node indexes "0-1"' },
+                layout: { type: Type.STRING, enum: ['flow', 'line', 'tree'], description: 'graph: flow for any process or how things move (numbered in order, with arrows and moving dots), line for a linked list or stack, tree for trees and networks' },
+                icons: { type: Type.ARRAY, items: { type: Type.STRING, enum: [...ICON_NAMES] }, description: 'a chalk icon per node or list line, or one for a text or note' },
+                moving: { type: Type.BOOLEAN, description: 'graph: dots travel along the links, to show data or things moving' },
+                answer: { type: Type.NUMBER, description: 'quiz: index of the right option' }
+              },
+              required: ['type']
+            }
+          }
+        },
+        required: ['items']
+      }
+    },
+    { name: 'board_close', description: 'Put the blackboard away when they are done with it.', parameters: { type: Type.OBJECT, properties: {} } },
+    {
+      name: 'start_lesson',
+      description: 'Start teaching something live on their screen: your glasses and pointer stick pop out and you walk to the edge of the screen. Call it first whenever they ask about something on the computer or want a page taught.',
+      parameters: { type: Type.OBJECT, properties: { topic: { type: Type.STRING } }, required: ['topic'] }
+    },
+    {
+      name: 'end_lesson',
+      description: 'Finish the lesson once everything is covered or they tell you to stop. Until you call this, you keep teaching.',
+      parameters: { type: Type.OBJECT, properties: {} }
+    },
+    {
       name: 'recall_memory',
       description: 'Search your private memory of them (kept on their PC) for what is relevant: their plans, preferences, people, routines, past conversations. Use it when they ask what you remember or when an answer depends on something they told you before. Takes a moment.',
       parameters: { type: Type.OBJECT, properties: { query: { type: Type.STRING } }, required: ['query'] }
@@ -198,6 +260,10 @@ export async function runTool(host: ToolHost, name: string, args: Record<string,
       case 'look_at_screen': return { result: await host.lookAtScreen(String(args.question ?? '')) }
       case 'browser_task': return { result: await host.browserTask(String(args.task ?? '')) }
       case 'recall_memory': return { result: await host.recall(String(args.query ?? '')) }
+      case 'start_lesson': return { result: host.startLesson(String(args.topic ?? '')) }
+      case 'end_lesson': return { result: host.finishLesson() }
+      case 'board_draw': return { result: await host.boardDraw(args) }
+      case 'board_close': return { result: host.boardClose() }
       default:
         if (DESK_OPS.has(name)) return { result: await host.desk(name as DeskOp, args) }
         return { error: `unknown tool ${name}` }

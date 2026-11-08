@@ -56,6 +56,9 @@ export class Behavior {
   private glanceT = 0
   private glance = { x: 0, y: 0 }
   private convLean = 0
+  private seatPx = 0
+  private readonly away = { x: 0, y: 0 }
+  private teaching = false
   private convTilt = 0
   private moodT = 0
   hoverSince = 0
@@ -135,7 +138,8 @@ export class Behavior {
   private platformBelow(x: number, y: number): Platform {
     const f = this.floor()
     const p = this.perch
-    if (p && x >= p.left - 20 && x <= p.right + 20 && y <= p.y + 2) return p
+    // Teaching happens from the floor at the edge of the screen, not back on the same window.
+    if (p && !this.teaching && x >= p.left - 20 && x <= p.right + 20 && y <= p.y + 2) return p
     return f
   }
 
@@ -146,7 +150,8 @@ export class Behavior {
     this.conv = c
     if (c !== 'none') {
       if (this.sleeping) this.wake()
-      if (this.mode === 'walk') this.toStand()
+      // Talking must not stop her halfway to the edge of the screen during a lesson.
+      if (this.mode === 'walk' && !this.teaching) this.toStand()
     }
     this.convLean = c === 'listening' ? 5 : 0
     this.convTilt = c === 'listening' ? 6 : c === 'thinking' ? -5 : 0
@@ -211,10 +216,19 @@ export class Behavior {
     this.motion.play(run ? 'run' : 'walk', { fade: 0.25 })
   }
 
+  get isTeaching() { return this.teaching }
+
+  /** Lesson on: she stands with her stick instead of wandering off or dozing. */
+  setTeaching(on: boolean) {
+    this.teaching = on
+    this.autonomy = !on
+    if (this.mode === 'stand') this.applyIdleClip()
+  }
+
   goCorner() {
     const f = this.floor()
     if (this.onPerch()) this.startFall(0, 0)
-    else this.walkTo(f.right - 20)
+    else this.walkTo(f.right - this.avatar.heightPx * 0.2)
   }
 
   sleep() {
@@ -245,7 +259,7 @@ export class Behavior {
    */
   async useLaptop(laptop: Laptop, label: string, icon: string, work: () => Promise<boolean>, doneFace: Emotion = 'happy'): Promise<boolean> {
     if (this.sleeping) this.wake()
-    if (this.mode === 'walk' || this.mode === 'sit') this.toStand()
+    if ((this.mode === 'walk' && !this.teaching) || this.mode === 'sit') this.toStand()
     const canAnimate = !this.isBusy && !laptop.busy
     if (!canAnimate) return work()
     const token = ++this.actToken
@@ -327,6 +341,7 @@ export class Behavior {
   private startFall(vx: number, vy: number) {
     this.sleeping = false
     this.face.eyesClosed = false
+    this.layers.lookWeight = 1
     this.mode = 'fall'
     this.vx = vx
     this.vy = vy
@@ -354,7 +369,7 @@ export class Behavior {
   }
 
   private applyIdleClip() {
-    const clip = this.conv === 'listening' ? 'listen' : this.conv === 'thinking' ? 'think' : this.conv === 'talking' ? 'talk' : this.idleClip
+    const clip = this.teaching ? 'teach' : this.conv === 'listening' ? 'listen' : this.conv === 'thinking' ? 'think' : this.conv === 'talking' ? 'talk' : this.idleClip
     this.motion.play(clip, { fade: 0.35 })
   }
 
@@ -368,7 +383,10 @@ export class Behavior {
       if (this.mode !== 'land') return
       const onPerch = this.onPerch()
       if (onPerch) this.toSit()
-      else this.toStand()
+      else {
+        this.toStand()
+        if (this.teaching) this.goCorner()
+      }
     })
     this.onLanded?.(hard)
   }
@@ -445,7 +463,10 @@ export class Behavior {
     const edge = clip === 'sit' || clip === 'sleep'
     const ground = clip === 'sitFloor' || clip === 'sleepFloor'
     const sitting = this.mode === 'sit' || this.mode === 'sleep' || this.mode === 'act'
-    this.avatar.setFeet(this.x, this.y + (sitting && edge ? this.hipsPx * 0.92 : sitting && ground ? this.hipsPx * 0.55 : 0))
+    const seat = sitting && edge ? this.hipsPx * 0.92 : sitting && ground ? this.hipsPx * 0.55 : 0
+    // Eased at the pace of the clip's crossfade: snapping made her jump about 95 px when sitting or standing.
+    this.seatPx += (seat - this.seatPx) * (1 - Math.exp(-dt * 8))
+    this.avatar.setFeet(this.x, this.y + this.seatPx)
 
     // Body language from her face: tilt and lean add to the conversation pose.
     const pose = this.face.pose
@@ -454,14 +475,12 @@ export class Behavior {
     // Some emotions make her look away (shy, jealous, lonely); she peeks back every few seconds.
     this.moodT += dt
     const peek = Math.sin(this.moodT * 0.8) > 0.75
-    const awayX = peek ? 0 : pose.glanceX * this.avatar.heightPx * 2 * (this.facing < 0 ? -1 : 1)
-    const awayY = peek ? 0 : pose.glanceY * this.avatar.heightPx * 2
+    const easeAway = 1 - Math.exp(-dt * 5)
+    this.away.x += ((peek ? 0 : pose.glanceX * this.avatar.heightPx * 2 * (this.facing < 0 ? -1 : 1)) - this.away.x) * easeAway
+    this.away.y += ((peek ? 0 : pose.glanceY * this.avatar.heightPx * 2) - this.away.y) * easeAway
 
     // Gaze: whoever is talking to her gets eye contact; otherwise she follows the cursor.
-    if (awayX || awayY) {
-      this.layers.target.x = this.x + awayX
-      this.layers.target.y = this.y - this.avatar.heightPx * 0.9 + awayY
-    } else if (this.conv !== 'none') {
+    if (this.conv !== 'none') {
       this.layers.target.x = this.x
       this.layers.target.y = this.y - this.avatar.heightPx * 0.9
     } else if (performance.now() - this.cursorMovedAt < 15000) {
@@ -478,6 +497,8 @@ export class Behavior {
       this.layers.target.x = this.x + this.glance.x
       this.layers.target.y = this.y - this.avatar.heightPx * 0.9 + this.glance.y
     }
+    this.layers.target.x += this.away.x
+    this.layers.target.y += this.away.y
 
     if (this.autonomy) this.think(dt)
   }

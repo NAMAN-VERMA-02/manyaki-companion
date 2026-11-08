@@ -143,6 +143,30 @@ body {
   50% { box-shadow: 0 0 0 6px rgba(255, 122, 168, 0.25); }
 }
 
+/* Mic mute button beside her */
+.mic-btn {
+  position: fixed;
+  transform: translate(-50%, -50%);
+  width: 32px;
+  height: 32px;
+  padding: 0;
+  border: 2px solid var(--pink);
+  border-radius: 50%;
+  background: rgba(255, 255, 255, 0.92);
+  font-size: 15px;
+  line-height: 1;
+  cursor: pointer;
+  pointer-events: auto;
+}
+.mic-btn.muted {
+  border-color: #8a7a90;
+  background: rgba(59, 35, 64, 0.88);
+}
+.mic-btn:focus-visible {
+  outline: 2px solid var(--pink);
+  outline-offset: 2px;
+}
+
 /* Debug panel (--manyaki-debug) */
 .debug {
   position: fixed;

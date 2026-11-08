@@ -1,9 +1,10 @@
 import { spawn, type ChildProcessWithoutNullStreams } from 'node:child_process'
 import { createInterface } from 'node:readline'
-import { dialog, screen } from 'electron'
+import { dialog, screen, type BrowserWindow } from 'electron'
 import { Vault } from '../eyes/shared/vault'
-import { describeControls, describeWindows, errorOnScreen, findText, hide, isPrivateWindow, pickWindow, redactOcr, riskOf, type Ctl, type OcrLine, type Win } from '../shared/desk'
+import { describeControls, describeWindows, errorOnScreen, findText, hide, isPrivateWindow, isSiteHome, pickTab, pickWindow, redactOcr, ringBox, riskOf, type Ctl, type OcrLine, type Win } from '../shared/desk'
 import type { Glance, WindowOp } from '../shared/types'
+import { showRing } from './ring'
 
 // Manyaki's hands and eyes on the desktop. A long-running PowerShell helper (assets/desk/host.ps1) does
 // the Win32 / UI Automation / OCR work; this side decides what she may see and do:
@@ -23,9 +24,12 @@ let log: (level: string, msg: string) => void = () => undefined
 // Her BrowserWindows belong to the main process.
 const ownPid = process.pid
 
-export function initDesk(opts: { script: string; log: (level: string, msg: string) => void }) {
+let boardWindow: () => BrowserWindow | null = () => null
+
+export function initDesk(opts: { script: string; log: (level: string, msg: string) => void; board: () => BrowserWindow | null }) {
   scriptPath = opts.script
   log = opts.log
+  boardWindow = opts.board
 }
 
 function start(): Promise<void> {
@@ -58,7 +62,26 @@ function start(): Promise<void> {
   return ready
 }
 
+/**
+ * Her blackboard sits over the page she's teaching. Screen reads look straight through it (it's left out
+ * of the capture, with no change on screen) and her clicks and scrolls pass through it to the page.
+ */
 async function call<T>(op: string, args: Record<string, unknown> = {}, ms = 15000): Promise<T> {
+  const board = boardWindow()
+  const open = board && !board.isDestroyed() && board.isVisible() ? board : null
+  if (open && (op === 'ocr' || op === 'redacted')) {
+    open.setContentProtection(true)
+    await new Promise((r) => setTimeout(r, 90))
+    try { return await send<T>(op, args, ms) } finally { if (!open.isDestroyed()) open.setContentProtection(false) }
+  }
+  if (open && (op === 'click' || op === 'scroll')) {
+    open.setIgnoreMouseEvents(true)
+    try { return await send<T>(op, args, ms) } finally { if (!open.isDestroyed()) open.setIgnoreMouseEvents(false) }
+  }
+  return send<T>(op, args, ms)
+}
+
+async function send<T>(op: string, args: Record<string, unknown>, ms: number): Promise<T> {
   await start()
   const id = ++seq
   return new Promise<T>((resolve, reject) => {
@@ -221,9 +244,47 @@ async function ocrRegion(r: { x: number; y: number; w: number; h: number }): Pro
 export async function clickText(target: string, double = false): Promise<string> {
   const lines = await ocrRegion(primary())
   const hit = findText(lines, target)
-  if (!hit) return `I can't see "${target}" on the screen`
+  if (!hit) return `I can't see "${target}" on the screen. Check see_screen and use words exactly as shown there, or scroll; don't guess names.`
   await call('click', { x: hit.x, y: hit.y, button: 'left', double })
   return `clicked "${hide(hit.text, taskVault(), shieldOn).slice(0, 60)}"`
+}
+
+const BROWSER = /^(chrome|msedge|firefox|brave|opera|vivaldi|arc)$/i
+
+/**
+ * If this site is already open in a browser tab, switch to it (and go to the page if a specific one was
+ * asked for) instead of piling up tabs. Null means nothing to reuse, so the caller opens it normally.
+ */
+export async function reuseTab(url: string): Promise<string | null> {
+  const wins = (await windows()).filter((w) => BROWSER.test(w.app) && !w.min && !isPrivateWindow(w.app, w.title))
+  wins.sort((a, b) => Number(b.active) - Number(a.active))
+  for (const w of wins.slice(0, 3)) {
+    const ctls = await call<Ctl[]>('tree', { hwnd: w.hwnd, max: 260 }, 8000)
+    lastTree = { hwnd: w.hwnd, ctls, win: w }
+    const tab = pickTab(ctls, url)
+    if (!tab) continue
+    await call('focus', { hwnd: w.hwnd })
+    await call('invoke', { id: tab.id })
+    if (!isSiteHome(url)) {
+      await new Promise((r) => setTimeout(r, 150))
+      await call('keys', { combo: 'ctrl+l' })
+      await call('type', { text: `${url}\n` }, 15000)
+    }
+    return `the tab you already had open (${hide(tab.name, taskVault(), shieldOn).slice(0, 60)})`
+  }
+  return null
+}
+
+/** Circles the visible text or control that matches, so they can see what she means. Clicks nothing. */
+export async function pointAt(target: string): Promise<string> {
+  const hit = findText(await ocrRegion(primary()), target)
+  const want = target.toLowerCase().trim()
+  const ctl = hit || !want ? null : lastTree.ctls.find((c) => c.w > 0 && c.name.toLowerCase().includes(want))
+  const spot = hit ?? (ctl && { x: ctl.x + ctl.w / 2, y: ctl.y + ctl.h / 2, w: ctl.w, h: ctl.h })
+  if (!spot) return `I can't see "${target}" on the screen. Check see_screen and use words exactly as shown there.`
+  const d = screen.getPrimaryDisplay()
+  await showRing(ringBox(spot, d.scaleFactor, d.bounds))
+  return `circled "${hide(target, taskVault(), shieldOn).slice(0, 60)}"`
 }
 
 /**

@@ -1,3 +1,4 @@
+import type { BoardState } from './board'
 // Types shared by the Electron main process, the preload bridge and the renderer.
 
 export type AppCategory = 'work' | 'distraction' | 'neutral' | 'self'
@@ -41,6 +42,8 @@ export interface Settings {
   voiceMuted: boolean            // she replies in the bubble only, no audio
   /** Ignored for an hour she sulks, then cries; cry too much and she gets angry and writes you letters. */
   emotionalAttachment: boolean
+  /** She may teach on her blackboard window. Off: she explains in words and on the screen only. */
+  blackboard: boolean
   checkInMinutes: number
   focusMinutes: number
   breakMinutes: number
@@ -87,6 +90,9 @@ export interface DeskBridge {
   keys(combo: string): Promise<string>
   scroll(direction: 'up' | 'down' | 'top' | 'bottom', amount?: number): Promise<string>
   clickText(text: string, double?: boolean): Promise<string>
+  /** Circles visible text or a control on screen; clicks nothing. */
+  point(text: string): Promise<string>
+  ringOff(): Promise<void>
   seeScreen(): Promise<string>
   /** One screenshot for a vision model, redacted on this PC when the privacy shield is on. */
   screenshot(): Promise<{ image: string; hidden: number } | { error: string }>
@@ -159,6 +165,7 @@ export const DEFAULT_SETTINGS: Settings = {
   gamingIsWork: false,
   voiceMuted: false,
   emotionalAttachment: false,
+  blackboard: true,
   checkInMinutes: 12,
   focusMinutes: 25,
   breakMinutes: 5,
@@ -248,6 +255,9 @@ export interface Bridge {
   }
   /** Send a command to her (from the Home window). */
   sendCommand(cmd: Command): void
+  /** Draws on her blackboard window (validated in the main process); says what happened. */
+  boardDraw(args: Record<string, unknown>, owner: string): Promise<string>
+  boardClose(): Promise<void>
   /** Overlay -> Home window status updates. */
   reportStatus(s: Status): void
   /** Right-click menu with her controls (mic, mute, DND, focus, size, settings, quit). */
@@ -263,6 +273,7 @@ export interface Bridge {
   on(channel: 'memory', cb: (m: MemoryData) => void): () => void
   on(channel: 'cursor', cb: (p: { x: number; y: number }) => void): () => void
   on(channel: 'status', cb: (s: Status) => void): () => void
+  on(channel: 'board', cb: (s: BoardState) => void): () => void
   on(channel: 'tab', cb: (tab: string) => void): () => void
   on(channel: 'local-status', cb: (s: LocalStatus) => void): () => void
   on(channel: 'eyes', cb: (e: EyesEventMsg) => void): () => void
@@ -320,4 +331,6 @@ export type Command =
   | { type: 'say'; text: string }
   | { type: 'come-here' }
   | { type: 'reset' }
+  | { type: 'board-ask'; text: string }
+  | { type: 'board-closed' }
   | { type: 'look'; question?: string }

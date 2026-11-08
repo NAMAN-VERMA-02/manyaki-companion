@@ -26,6 +26,11 @@ export class TextBrain {
     try {
       return await ai.models.generateContent(params)
     } catch (e) {
+      // Daily quota is per model: the lighter one usually still has some, and retrying won't help.
+      if (/\b429\b|RESOURCE_EXHAUSTED|quota/i.test((e as Error).message ?? '') && params.model !== this.liteModel) {
+        this.log(`${params.model} out of quota; using ${this.liteModel}`)
+        return await ai.models.generateContent({ ...params, model: this.liteModel })
+      }
       if (!busy(e)) throw e
       await new Promise((r) => setTimeout(r, 800))
       try {
@@ -42,7 +47,10 @@ export class TextBrain {
   get usable() { return !!this.ai && Date.now() > this.unavailableUntil && navigator.onLine }
 
   /** One reply. `input` is text, or 16 kHz mono audio of what they said. Returns her spoken text and what they said. */
-  async reply(system: string, history: Turn[], input: { text?: string; audio?: Float32Array; image?: string }): Promise<{ text: string; heard?: string }> {
+  async reply(
+    system: string, history: Turn[], input: { text?: string; audio?: Float32Array; image?: string },
+    opts: { onSay?: (text: string) => void; stale?: () => boolean; lookFirst?: boolean } = {}
+  ): Promise<{ text: string; heard?: string }> {
     if (!this.ai) throw new Error('no key')
     const contents: Content[] = history.slice(-10).map((t) => ({ role: t.role === 'user' ? 'user' : 'model', parts: [{ text: t.text }] }))
     const userParts: Part[] = []
@@ -54,8 +62,16 @@ export class TextBrain {
     contents.push({ role: 'user', parts: userParts })
 
     let toolsOff = false
-    // Enough rounds for a multi-step desktop job (read → press → type → check …).
-    for (let round = 0; round < 14; round++) {
+    let heard: string | undefined
+    const said: string[] = []
+    // Lines she says between steps are spoken right away when the caller can; otherwise returned at the end.
+    const take = (raw: string) => {
+      heard ??= raw.match(/<heard>([\s\S]*?)<\/heard>/)?.[1]?.trim()
+      return raw.replace(/<heard>[\s\S]*?<\/heard>/, '').trim()
+    }
+    // Enough rounds for a multi-step job or a guided tour (see → say → click → see …).
+    for (let round = 0; round < 30; round++) {
+      if (opts.stale?.()) break
       const res = await this.generate({
         model: this.model,
         contents,
@@ -64,6 +80,7 @@ export class TextBrain {
           tools: [{ functionDeclarations: toolDeclarations(false) }],
           // After a malformed tool call, ask for a plain-text answer instead.
           ...(toolsOff ? { toolConfig: { functionCallingConfig: { mode: FunctionCallingConfigMode.NONE } } } : {}),
+          ...(opts.lookFirst && round === 0 ? { toolConfig: { functionCallingConfig: { mode: FunctionCallingConfigMode.ANY, allowedFunctionNames: ['see_screen'] } } } : {}),
           maxOutputTokens: 700,
           temperature: 0.9
         }
@@ -77,21 +94,19 @@ export class TextBrain {
         toolsOff = true
         continue
       }
-      if (!calls.length) {
-        const heard = text.match(/<heard>([\s\S]*?)<\/heard>/)?.[1]?.trim()
-        return { text: text.replace(/<heard>[\s\S]*?<\/heard>/, '').trim(), heard }
+      if (!calls.length) return { text: [...said, take(text)].filter(Boolean).join(' '), heard }
+      const line = take(text)
+      if (line) {
+        if (opts.onSay) opts.onSay(line)
+        else said.push(line)
       }
       contents.push(res.candidates?.[0]?.content ?? { role: 'model', parts: calls.map((c) => ({ functionCall: c })) })
       contents.push({
         role: 'user',
         parts: await Promise.all(calls.map(async (c) => ({ functionResponse: { id: c.id, name: c.name, response: await runTool(this.tools, c.name ?? '', (c.args ?? {}) as Record<string, unknown>) } })))
       })
-      if (text.trim()) {
-        const heard = text.match(/<heard>([\s\S]*?)<\/heard>/)?.[1]?.trim()
-        return { text: text.replace(/<heard>[\s\S]*?<\/heard>/, '').trim(), heard }
-      }
     }
-    return { text: '' }
+    return { text: said.join(' '), heard }
   }
 
   /** Looks at a screenshot and explains it for the companion to say (used by the Live look_at_screen tool). */

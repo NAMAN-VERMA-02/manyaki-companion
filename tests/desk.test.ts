@@ -1,10 +1,48 @@
 import { describe, expect, it } from 'vitest'
-import { describeControls, describeWindows, errorOnScreen, findText, hide, isPrivateWindow, pickWindow, redactOcr, riskOf, type Ctl, type OcrLine, type Win } from '../shared/desk'
+import { describeControls, describeWindows, errorOnScreen, findText, hide, isPrivateWindow, pickWindow, isSiteHome, pickTab, redactOcr, ringBox, ringHtml, riskOf, tabKey, type Ctl, type OcrLine, type Win } from '../shared/desk'
 import { Vault } from '../eyes/shared/vault'
 import { asBullets, isRecallQuestion, search, touch, tokens } from '../shared/recall'
 import { addMinute, EMPTY_USAGE, routines, usualNow } from '../shared/patterns'
 
 const win = (app: string, title: string, extra: Partial<Win> = {}): Win => ({ hwnd: Math.floor(Math.random() * 1e6), title, pid: 1, app, x: 0, y: 0, w: 800, h: 600, min: false, max: false, active: false, ...extra })
+
+describe('desktop: reusing open tabs', () => {
+  const tab = (name: string, type = 'tabitem') => ({ id: name, type, name } as Ctl)
+  it('knows which word to look for in a tab title', () => {
+    expect(tabKey('https://github.com/new')).toBe('github')
+    expect(tabKey('https://www.geeksforgeeks.org/dsa/x')).toBe('geeksforgeeks')
+    expect(tabKey('https://mail.google.com')).toBe('gmail')
+    expect(tabKey('https://docs.google.com/a')).toBe('docs')
+    expect(tabKey('https://www.google.com/search?q=x')).toBe('google')
+    expect(tabKey('https://x.com')).toBeNull()
+    expect(tabKey('not a url')).toBeNull()
+  })
+  it('picks the tab for the site, on whole words, and only real tabs', () => {
+    const tabs = [tab('New repository'), tab('Array Data Structure - GeeksforGeeks'), tab('GitHub Universe'), tab('GitHub', 'button')]
+    expect(pickTab(tabs, 'https://github.com')?.name).toBe('GitHub Universe')
+    expect(pickTab(tabs, 'https://www.geeksforgeeks.org/dsa/x')?.name).toBe('Array Data Structure - GeeksforGeeks')
+    expect(pickTab(tabs, 'https://www.youtube.com')).toBeNull()
+    expect(pickTab([tab('Notgithubby page')], 'https://github.com')).toBeNull()
+    expect(pickTab(tabs, 'https://x.com')).toBeNull()
+  })
+  it('only navigates when a particular page was asked for', () => {
+    expect(isSiteHome('https://github.com')).toBe(true)
+    expect(isSiteHome('https://github.com/new')).toBe(false)
+    expect(isSiteHome('https://www.google.com/search?q=x')).toBe(false)
+  })
+})
+
+describe('desktop: the ring', () => {
+  it('converts screen pixels to window DIPs around the text, never tiny', () => {
+    expect(ringBox({ x: 300, y: 200, w: 100, h: 20 }, 2, { x: 0, y: 0 })).toEqual({ x: 107, y: 76, w: 86, h: 48 })
+    expect(ringBox({ x: 300, y: 200, w: 400, h: 100 }, 1, { x: 100, y: 50 })).toEqual({ x: -18, y: 86, w: 436, h: 128 })
+  })
+  it('page only ever holds numbers from the box', () => {
+    const html = ringHtml({ x: 'x;}</style><script>' as unknown as number, y: 2, w: 3, h: 4 })
+    expect(html).not.toContain('<script>')
+    expect(html).toContain('left:0px')
+  })
+})
 
 describe('desktop: choosing windows', () => {
   const wins = [win('chrome', 'lofi beats - YouTube - Google Chrome'), win('Code', 'main.ts - manyaki - Visual Studio Code', { active: true }), win('explorer', 'Downloads - File Explorer')]
@@ -59,6 +97,10 @@ describe('desktop: what she reads is redacted', () => {
     ]
     expect(findText(lines, 'submit')).toMatchObject({ x: 540, y: 315 })
     expect(findText(lines, 'cancel')).toBeNull()
+    const noisy: OcrLine[] = [{ text: "200 204 20s 212 216 no 22' ng 222 226 aaa", x: 0, y: 0, w: 400, h: 20, words: [] }]
+    expect(findText(noisy, 'next')).toBeNull()
+    expect(findText(noisy, 'no')).toBeNull()
+    expect(findText([{ text: 'Product catalogue', x: 0, y: 0, w: 200, h: 20, words: [] }], 'log')).toBeNull()
   })
 })
 

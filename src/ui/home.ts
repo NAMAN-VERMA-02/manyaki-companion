@@ -110,6 +110,8 @@ function renderSettings() {
   $('q-shield').textContent = s.privacyShield ? '🛡️ Privacy shield: on' : '🛡️ Privacy shield: off'
   $('q-sense').classList.toggle('on', s.screenSense)
   $('q-sense').textContent = s.screenSense ? '👀 Sees my screen: on' : '👀 Sees my screen: off'
+  $('q-board').classList.toggle('on', s.blackboard)
+  $('q-board').textContent = s.blackboard ? '🧑‍🏫 Blackboard: on' : '🧑‍🏫 Blackboard: off'
   $('q-attach').classList.toggle('on', s.emotionalAttachment)
   $('q-attach').textContent = s.emotionalAttachment ? '💞 Emotional attachment: on' : '💼 Professional (attachment off)'
   if (document.activeElement !== $('focus-min')) $<HTMLInputElement>('focus-min').value = String(s.focusMinutes)
@@ -219,6 +221,7 @@ export async function initHome() {
   $('q-shield').onclick = () => void save({ privacyShield: !settings?.privacyShield })
   $('q-sense').onclick = () => void save({ screenSense: !settings?.screenSense })
   $('q-stream').onclick = () => void save({ streamSafe: !settings?.streamSafe })
+  $('q-board').onclick = () => void save({ blackboard: !settings?.blackboard })
   $('q-attach').onclick = () => void save({ emotionalAttachment: !settings?.emotionalAttachment })
   $('q-private').onclick = () => void save({ brainMode: settings?.brainMode === 'private' ? 'auto' : 'private' })
   $('focus-start').onclick = () => {

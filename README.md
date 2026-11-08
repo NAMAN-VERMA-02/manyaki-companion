@@ -29,6 +29,9 @@ On first launch the Settings window opens:
 |---|---|
 | Talk (hands-free or `Ctrl+Alt+Space`) | answers out loud, with lip-sync and expressions. Interrupt her any time by speaking or clicking her |
 | Double-click her | opens a chat box |
+| Click the 🎤 beside her | mutes or unmutes her mic |
+| Ask about a concept ("array kya hai?") | puts on her glasses, picks up her stick and teaches on her blackboard: animated arrays, variables, lists, trees and code, plus quizzes you click and a box for questions |
+| Ask about a site or app, or open an article | teaches it live on the screen: circles what she talks about, clicks through, types examples into fields (never submits), and scrolls and explains to the end. Say "stop" or "ruk jao" any time |
 | Pat her head | gets a headpat: closes her eyes, blushes, ♥ |
 | Poke her body | giggles and hops. Poke too much and she pouts 💢 |
 | Drag her | dangles from your cursor. Throw her and she falls, bounces and lands |
@@ -181,6 +184,13 @@ Kept in `%APPDATA%\manyaki-companion\manyaki.json`:
 - the last few turns of conversation
 
 You can view, export or wipe all of it in Settings.
+
+**What private mode enforces, and what it doesn't (checked by `tests/netguard.test.ts`).**
+
+- Closing the Gemini connection is done in the UI; the main process also cancels any request to `generativelanguage.googleapis.com` while Private mode is on, so a UI bug can't send audio or text to Google.
+- The page's Content-Security-Policy limits where it can connect at all. A test pins that list, so a new host can't be added without someone deciding whether it can receive user data.
+- **Not verified:** the offline model downloads (Hugging Face, one time) happen in a background process that this guard cannot see, and I have not measured whether anything else leaves the PC in Private mode. Websites she opens for you go through your default browser, so they are outside her control.
+- CPU, RAM and latency have not been measured yet.
 
 ### Privacy
 

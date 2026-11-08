@@ -88,14 +88,21 @@ export function redactOcr(lines: OcrLine[], vault: Vault | null, shield: boolean
 }
 
 /** Where to click to hit some visible text ("click Submit"), from OCR words. */
-export function findText(lines: OcrLine[], target: string): { x: number; y: number; text: string } | null {
+export function findText(lines: OcrLine[], target: string): { x: number; y: number; w: number; h: number; text: string } | null {
   const want = target.toLowerCase().replace(/\s+/g, ' ').trim()
   if (!want) return null
-  let best: { x: number; y: number; text: string; score: number } | null = null
+  let best: { x: number; y: number; w: number; h: number; text: string; score: number } | null = null
+  const esc = want.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
+  const whole = new RegExp(`(^|[^\\p{L}\\p{N}])${esc}($|[^\\p{L}\\p{N}])`, 'u')
   for (const l of lines) {
     const lt = l.text.toLowerCase()
-    const i = lt.indexOf(want)
-    if (i < 0) continue
+    // Whole words only: "22" must not hit "222 226" in a diagram, "log" must not hit "catalogue".
+    const m = whole.exec(lt)
+    if (!m) continue
+    const i = m.index + m[1].length
+    // Lines that are mostly numbers or symbols are labels inside pictures, not things to click.
+    const letters = (lt.match(/\p{L}/gu) ?? []).length
+    if (letters < lt.replace(/\s/g, '').length * 0.4 && /\p{L}/u.test(want)) continue
     // Prefer short lines that are mostly the target (a button), then earlier on screen.
     const score = want.length / lt.length
     let at = 0
@@ -103,10 +110,53 @@ export function findText(lines: OcrLine[], target: string): { x: number; y: numb
     const covered = ws.filter(({ w, p }) => p >= 0 && p < i + want.length && p + w.t.length > i)
     const x0 = covered.length ? Math.min(...covered.map((c) => c.w.x)) : l.x
     const x1 = covered.length ? Math.max(...covered.map((c) => c.w.x + c.w.w)) : l.x + l.w
-    if (!best || score > best.score) best = { x: Math.round((x0 + x1) / 2), y: Math.round(l.y + l.h / 2), text: l.text, score }
+    if (!best || score > best.score) best = { x: Math.round((x0 + x1) / 2), y: Math.round(l.y + l.h / 2), w: x1 - x0, h: l.h, text: l.text, score }
   }
-  return best ? { x: best.x, y: best.y, text: best.text } : null
+  return best ? { x: best.x, y: best.y, w: best.w, h: best.h, text: best.text } : null
 }
+
+export interface Box { x: number; y: number; w: number; h: number }
+
+/** Screen pixels (centre and size) to the window's DIPs, with room around the text and never a tiny ring. */
+export function ringBox(c: { x: number; y: number; w: number; h: number }, scale: number, origin: { x: number; y: number }): Box {
+  const w = Math.max(c.w / scale + 36, 64)
+  const h = Math.max(c.h / scale + 28, 48)
+  return { x: Math.round(c.x / scale - origin.x - w / 2), y: Math.round(c.y / scale - origin.y - h / 2), w: Math.round(w), h: Math.round(h) }
+}
+
+/** The ring's page: pops in with a bounce, then pulses so the eye finds it. */
+export function ringHtml(b: Box): string {
+  const n = (v: number) => Math.round(Number(v) || 0)
+  return `<!doctype html><html><head><meta charset="utf-8"><style>
+html,body{margin:0;background:transparent;overflow:hidden}
+#r{position:fixed;left:${n(b.x)}px;top:${n(b.y)}px;width:${n(b.w)}px;height:${n(b.h)}px;box-sizing:border-box;border:4px solid #ff4f8f;border-radius:50%;
+box-shadow:0 0 0 3px rgba(255,255,255,.75),0 0 18px 6px rgba(255,79,143,.55);animation:pop .35s cubic-bezier(.3,1.7,.5,1) both,pulse 1.1s ease-in-out .35s infinite}
+@keyframes pop{from{transform:scale(2.2);opacity:0}to{transform:scale(1);opacity:1}}
+@keyframes pulse{50%{transform:scale(1.07)}}
+@media (prefers-reduced-motion:reduce){#r{animation:none}}
+</style></head><body><div id="r"></div></body></html>`
+}
+
+/** The word a site's tabs have in their title: "github" for github.com, "gmail" for mail.google.com. */
+export function tabKey(url: string): string | null {
+  let host: string
+  try { host = new URL(url).hostname.toLowerCase().replace(/^www\./, '') } catch { return null }
+  const parts = host.split('.')
+  if (parts.length > 2 && parts.slice(-2).join('.') === 'google.com') return parts[0] === 'mail' ? 'gmail' : parts[0]
+  const name = parts.length > 1 ? parts[parts.length - 2] : parts[0]
+  // Too short to tell apart in a title ("x" is in everything).
+  return name.length >= 3 ? name : null
+}
+
+/** The open tab for this site, or null. Tabs are matched on whole words in their title. */
+export function pickTab(ctls: Ctl[], url: string): Ctl | null {
+  const key = tabKey(url)
+  if (!key) return null
+  return ctls.find((c) => c.type === 'tabitem' && new RegExp(`(^|[^a-z0-9])${key}($|[^a-z0-9])`, 'i').test(c.name)) ?? null
+}
+
+/** Only the home page was asked for, so switching to an open tab is enough; anything else needs navigating. */
+export const isSiteHome = (url: string) => { try { const u = new URL(url); return u.pathname === '/' && !u.search } catch { return false } }
 
 const TERMINAL = /\b(powershell|pwsh|cmd|command prompt|windows terminal|terminal|bash|wsl|ubuntu|git bash|conhost|run)\b/i
 
