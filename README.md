@@ -185,6 +185,13 @@ Kept in `%APPDATA%\manyaki-companion\manyaki.json`:
 
 You can view, export or wipe all of it in Settings.
 
+**What private mode enforces, and what it doesn't (checked by `tests/netguard.test.ts`).**
+
+- Closing the Gemini connection is done in the UI; the main process also cancels any request to `generativelanguage.googleapis.com` while Private mode is on, so a UI bug can't send audio or text to Google.
+- The page's Content-Security-Policy limits where it can connect at all. A test pins that list, so a new host can't be added without someone deciding whether it can receive user data.
+- **Not verified:** the offline model downloads (Hugging Face, one time) happen in a background process that this guard cannot see, and I have not measured whether anything else leaves the PC in Private mode. Websites she opens for you go through your default browser, so they are outside her control.
+- CPU, RAM and latency have not been measured yet.
+
 ### Privacy
 
 - Audio only leaves your PC after the on-device voice detector hears speech.

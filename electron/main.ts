@@ -7,6 +7,7 @@ import type { Command, DisplayInfo, Settings } from '../shared/types'
 import { startActivityWatcher } from './activity'
 import { hideRing } from './ring'
 import { resolveWebsite } from './resolve'
+import { blockedInPrivateMode } from './netguard'
 import { applyDraw, type BoardState } from '../shared/board'
 import * as store from './store'
 import { runAction, type ActionKind } from './actions'
@@ -572,6 +573,10 @@ app.whenReady().then(() => {
   // Microphone access for her ears; nothing else is requested.
   session.defaultSession.setPermissionRequestHandler((_wc, permission, cb) => cb(permission === 'media' || permission === 'notifications'))
   session.defaultSession.setPermissionCheckHandler((_wc, permission) => permission === 'media' || permission === 'notifications')
+  // Private mode promises nothing leaves the PC, so refuse the cloud AI host here as well as in the UI.
+  session.defaultSession.webRequest.onBeforeRequest((details, cb) => {
+    cb({ cancel: blockedInPrivateMode(store.getSettings().brainMode === 'private', details.url) })
+  })
 
   desk.initDesk({ script: join(assetsRoot(), 'desk', 'host.ps1'), log, board: () => boardWin })
   desk.setShield(store.getSettings().privacyShield)
